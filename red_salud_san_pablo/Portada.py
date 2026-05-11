@@ -401,10 +401,9 @@ def make_tablero_route(route, titulo):
             return resp
 
         if RENDER:
-            # En Render: proxy al Streamlit multi-page interno
+            # En Render: proxy HTTP — el navegador solo ve la URL de Render
             port = STREAMLIT_PORT
             if not is_port_open(port):
-                # Lanzar y esperar
                 threading.Thread(target=launch_streamlit_render, daemon=True).start()
                 for _ in range(20):
                     if is_port_open(port):
@@ -412,10 +411,9 @@ def make_tablero_route(route, titulo):
                     time.sleep(1)
                 else:
                     return Response(waiting_page(titulo), mimetype="text/html; charset=utf-8")
-
-            # Redirigir al Streamlit multi-page con el nombre de página correcto
+            # Proxy transparente — nunca redirige a 0.0.0.0 ni localhost
             page_name = PAGE_NAMES.get(route, "app")
-            return redirect(f"http://localhost:{port}/{page_name}", code=302)
+            return proxy_to_streamlit(port, page_name, request.query_string.decode())
 
         else:
             # En local: cada página tiene su propio puerto
@@ -437,6 +435,27 @@ def make_tablero_route(route, titulo):
 
 for route, titulo in TITULOS.items():
     app.add_url_rule(route, view_func=make_tablero_route(route, titulo))
+
+@app.route("/_stcore/<path:subpath>", methods=["GET","POST"])
+def stcore_proxy(subpath):
+    """Proxy para recursos internos de Streamlit."""
+    if RENDER and HAS_REQUESTS:
+        return proxy_to_streamlit(STREAMLIT_PORT, f"_stcore/{subpath}", request.query_string.decode())
+    return not_found(None)
+
+@app.route("/static/<path:subpath>", methods=["GET","POST"])
+def static_proxy(subpath):
+    """Proxy para archivos estáticos de Streamlit."""
+    if RENDER and HAS_REQUESTS:
+        return proxy_to_streamlit(STREAMLIT_PORT, f"static/{subpath}", request.query_string.decode())
+    return not_found(None)
+
+@app.route("/stream", methods=["GET","POST"])
+def stream_proxy():
+    """Proxy para el endpoint de streaming de Streamlit."""
+    if RENDER and HAS_REQUESTS:
+        return proxy_to_streamlit(STREAMLIT_PORT, "stream", request.query_string.decode())
+    return not_found(None)
 
 @app.errorhandler(404)
 def not_found(e):
@@ -476,4 +495,5 @@ if __name__ == "__main__":
         print("\n⏹️  Cerrando...")
         if streamlit_proc:
             streamlit_proc.terminate()
+
 
