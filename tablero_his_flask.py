@@ -473,7 +473,6 @@ def tablero_his():
     global _DF_CACHE_HIS
     if _DF_CACHE_HIS is None:
         try:
-            # Solo columnas necesarias para reducir memoria
             COLS_HIS = [
                 "Mes", "Nombre_Establecimiento", "Codigo_Item", "Descripcion_Item",
                 "Edad_Reg", "Tipo_Diagnostico", "Descripcion_Financiador",
@@ -484,10 +483,7 @@ def tablero_his():
             ]
             todas = pl.read_parquet(ARCHIVO_PARQUET, n_rows=1).columns
             cols_leer = [c for c in todas if c.strip() in COLS_HIS]
-            _DF_CACHE_HIS = pl.read_parquet(
-                ARCHIVO_PARQUET,
-                columns=cols_leer if cols_leer else None
-            )
+            _DF_CACHE_HIS = pl.read_parquet(ARCHIVO_PARQUET, columns=cols_leer if cols_leer else None)
         except Exception as e:
             return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
     df_raw = _DF_CACHE_HIS
@@ -591,12 +587,7 @@ def tablero_his():
                 else:
                     df_f = df_tmp.drop("_fs")
 
-    # ── Limitar filas para gráficos (evitar OOM en Render gratuito) ──
-    total_atenciones = df_f.height
-    MAX_FILAS_GRAFICOS = 50_000
-    df_graf = df_f.sample(min(MAX_FILAS_GRAFICOS, df_f.height), seed=42) if df_f.height > MAX_FILAS_GRAFICOS else df_f
-
-    # ── KPIs (sobre datos completos) ──
+    # ── KPIs ──
     total_atenciones = df_f.height
     u_pac = n_pac = cont_pac = 0; pct_cap = 0.0
     if "Numero_Documento_Paciente" in df_f.columns and total_atenciones>0:
@@ -612,28 +603,28 @@ def tablero_his():
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
 
-    if "Descripcion_Item" in df_graf.columns and total_atenciones>0:
-        r = (df_graf.group_by("Descripcion_Item").agg(pl.count().alias("N"))
+    if "Descripcion_Item" in df_f.columns and total_atenciones>0:
+        r = (df_f.group_by("Descripcion_Item").agg(pl.count().alias("N"))
              .sort("N",descending=True).head(5).to_pandas())
         if not r.empty:
             html_c1 = hacer_radar(r["Descripcion_Item"].tolist(), r["N"].tolist())
 
-    if "Tipo_Diagnostico" in df_graf.columns and total_atenciones>0:
-        r = (df_graf.group_by("Tipo_Diagnostico").agg(pl.count().alias("N"))
+    if "Tipo_Diagnostico" in df_f.columns and total_atenciones>0:
+        r = (df_f.group_by("Tipo_Diagnostico").agg(pl.count().alias("N"))
              .sort("N",descending=True).to_pandas())
         if not r.empty:
             r["Tipo_Diagnostico"] = r["Tipo_Diagnostico"].map(
                 lambda x: MAPA_DIAG.get(str(x).strip().upper(), str(x).strip()))
             html_c2 = hacer_barras(r["Tipo_Diagnostico"].tolist(), r["N"].tolist(), DAZUL)
 
-    if "Nombre_Establecimiento" in df_graf.columns and total_atenciones>0:
-        r = (df_graf.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
+    if "Nombre_Establecimiento" in df_f.columns and total_atenciones>0:
+        r = (df_f.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
              .sort("N",descending=True).head(5).to_pandas())
         if not r.empty:
             html_c3 = hacer_barras(r["Nombre_Establecimiento"].tolist(), r["N"].tolist(), DAZUL)
 
-    if "Descripcion_Financiador" in df_graf.columns and total_atenciones>0:
-        r = (df_graf.group_by("Descripcion_Financiador").agg(pl.count().alias("N"))
+    if "Descripcion_Financiador" in df_f.columns and total_atenciones>0:
+        r = (df_f.group_by("Descripcion_Financiador").agg(pl.count().alias("N"))
              .sort("N",descending=True).head(6)
              .filter(pl.col("Descripcion_Financiador").is_not_null()).to_pandas())
         r = r[r["Descripcion_Financiador"].astype(str).str.strip()!="None"]
@@ -656,18 +647,23 @@ def tablero_his():
             nom = str(row.get("Nombres_Personal","") or "").strip()
             personal_data.append((f"{ap} {nom}".strip(), ap, nom))
 
-    # p_personal es un índice ("0","1","2"...)
-    try:
-        p_idx = int(p_personal) if p_personal and p_personal.isdigit() else 0
-    except:
-        p_idx = 0
-    p_idx = max(0, min(p_idx, len(personal_data)-1))
-
-    sel_label, sel_ap, sel_nom = personal_data[p_idx]
+    # p_personal es "APELLIDO||NOMBRE" — estable ante cambios de filtro
+    sel_ap = sel_nom = sel_label = ""
+    p_idx = 0
+    if p_personal and "||" in p_personal:
+        parts = p_personal.split("||", 1)
+        sel_ap = parts[0].strip(); sel_nom = parts[1].strip()
+        for i, (lbl, ap, nom) in enumerate(personal_data):
+            if ap == sel_ap and nom == sel_nom:
+                p_idx = i; sel_label = lbl; break
+    if p_idx == 0:
+        sel_label = "— Todos —"; sel_ap = ""; sel_nom = ""
 
     if not res_p.empty:
-        if p_idx > 0:
-            res_p_disp = res_p.iloc[[p_idx-1]].copy()
+        if sel_ap:
+            # Buscar la fila que coincide con el personal seleccionado
+            res_p_disp_list = res_p[(res_p.get("Apellido_Paterno_Personal","") == sel_ap) if "Apellido_Paterno_Personal" in res_p.columns else []]
+            res_p_disp = res_p[res_p["Apellido_Paterno_Personal"].astype(str)==sel_ap] if "Apellido_Paterno_Personal" in res_p.columns else res_p.head(1)
         else:
             fila_tot = pd.DataFrame({"Apellido_Paterno_Personal":["TOTAL GENERAL"],
                                      "Nombres_Personal":[""],
@@ -676,14 +672,14 @@ def tablero_his():
         html_t_personal = tabla_html(res_p_disp, num_cols=["Total_Atenciones"])
 
     # Opciones para el select — valor = índice numérico
-    opciones_personal_sel = [(str(i), lbl) for i, (lbl,_,_) in enumerate(personal_data)]
+    opciones_personal_sel = [(f'{ap}||{nom}' if ap else '', lbl) for lbl,ap,nom in personal_data]
 
     # ── Pacientes ──
     cols_pac = ["Numero_Documento_Paciente"]
     for c in ["Nombres_Paciente","Apellido_Paterno_Paciente","Fecha_Ultima_Regla"]:
         if c in df_f.columns: cols_pac.append(c)
     df_para_pac = df_f.clone()
-    if p_idx > 0 and cols_p:
+    if sel_ap and cols_p:
         _f = pl.lit(True)
         if "Apellido_Paterno_Personal" in df_f.columns:
             _f = _f & (pl.col("Apellido_Paterno_Personal").cast(pl.Utf8).str.strip_chars()==sel_ap)
@@ -746,12 +742,12 @@ def tablero_his():
     bb = "rgba(28,57,142,0.08)" if n_pac_filt>0 else "rgba(220,38,38,0.07)"
     bbd= "rgba(28,57,142,0.2)"  if n_pac_filt>0 else "rgba(220,38,38,0.2)"
     dni_hint = f" · DNI: {p_dni}" if p_dni else ""
-    titulo_pac = ("Pacientes de "+sel_label if p_idx > 0 else "Lista de Pacientes")
+    titulo_pac = ("Pacientes de "+sel_label if sel_ap else "Lista de Pacientes")
     badge_pac = (f'<span class="pac-badge" style="color:{bc};background:{bb};border:1px solid {bbd};">'
                  f'● {n_pac_filt:,}{dni_hint}</span>')
 
     badge_personal = ""
-    if p_idx > 0:
+    if sel_ap:
         badge_personal = (f'<div style="display:inline-flex;align-items:center;gap:10px;background:#e8eef8;'
                           f'border:1px solid #c5d3ea;border-radius:20px;padding:6px 16px;margin-bottom:10px;'
                           f'font-family:Inter,sans-serif;font-size:13px;color:#334155;">'
@@ -765,7 +761,7 @@ def tablero_his():
 
     # Opciones select personal (pre-construidas para evitar f-string anidado)
     _sel_personal_opts = ''.join(
-        '<option value="' + v + '"' + (' selected' if str(p_idx)==v else '') + '>' + lbl + '</option>'
+        '<option value="' + v + '"' + (' selected' if v == (f'{sel_ap}||{sel_nom}' if sel_ap else '') else '') + '>' + lbl + '</option>'
         for v,lbl in opciones_personal_sel
     )
 
@@ -813,7 +809,7 @@ def tablero_his():
         f'<input type="date" name="hasta" value="{p_hasta}" min="{min_fecha_str}" max="{max_fecha_str}" {cal_disabled}></div>'
         f'<div style="display:flex;align-items:center;">{cal_extra}</div>'
         '</div>'
-        f'<input type="hidden" name="personal" value="{p_idx}">'
+        f'<input type="hidden" name="personal" value="{sel_ap}||{sel_nom}">'
         f'<input type="hidden" name="dni" value="{p_dni}">'
         '<div style="display:flex;align-items:center;gap:16px;margin-top:14px;">'
         '<button type="submit" class="btn">Aplicar filtros</button>'
@@ -861,7 +857,7 @@ def tablero_his():
         f'<input type="text" name="dni" placeholder="Ej: 12345678" value="{p_dni}" maxlength="8"'
         ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="flex:1;">'
         '<button type="submit" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0;">Buscar</button>'
-        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if p_idx > 0 or p_dni else '')
+        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if sel_ap or p_dni else '')
         + '</div></div></div></form>'
         f'{badge_personal}'
         '<div class="tables-grid">'
