@@ -611,68 +611,79 @@ def tablero_his():
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
 
+    # Usar Polars puro para gráficos — sin pandas, mucho menos memoria
     if "Descripcion_Item" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Descripcion_Item").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(6).to_pandas())
-        if not r.empty:
-            html_c1 = hacer_radar(r["Descripcion_Item"].tolist(), r["N"].tolist())
+        rows = (df_f.group_by("Descripcion_Item").agg(pl.len().alias("N"))
+                .sort("N",descending=True).head(6).rows(named=True))
+        if rows:
+            html_c1 = hacer_radar([r["Descripcion_Item"] for r in rows],
+                                   [r["N"] for r in rows])
 
     if "Tipo_Diagnostico" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Tipo_Diagnostico").agg(pl.count().alias("N"))
-             .sort("N",descending=True).to_pandas())
-        if not r.empty:
-            r["Tipo_Diagnostico"] = r["Tipo_Diagnostico"].map(
-                lambda x: MAPA_DIAG.get(str(x).strip().upper(), str(x).strip()))
-            html_c2 = hacer_barras(r["Tipo_Diagnostico"].tolist(), r["N"].tolist(), DAZUL)
+        rows = (df_f.group_by("Tipo_Diagnostico").agg(pl.len().alias("N"))
+                .sort("N",descending=True).head(6).rows(named=True))
+        rows = [r for r in rows if r["Tipo_Diagnostico"] is not None]
+        if rows:
+            etiq = [MAPA_DIAG.get(str(r["Tipo_Diagnostico"]).strip().upper(),
+                                   str(r["Tipo_Diagnostico"]).strip()) for r in rows]
+            html_c2 = hacer_barras(etiq, [r["N"] for r in rows], DAZUL)
 
     if "Nombre_Establecimiento" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(6).to_pandas())
-        if not r.empty:
-            html_c3 = hacer_barras(r["Nombre_Establecimiento"].tolist(), r["N"].tolist(), DAZUL)
+        rows = (df_f.group_by("Nombre_Establecimiento").agg(pl.len().alias("N"))
+                .sort("N",descending=True).head(6).rows(named=True))
+        if rows:
+            html_c3 = hacer_barras([r["Nombre_Establecimiento"] for r in rows],
+                                    [r["N"] for r in rows], DAZUL)
 
     if "Descripcion_Financiador" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Descripcion_Financiador").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(6)
-             .filter(pl.col("Descripcion_Financiador").is_not_null()).to_pandas())
-        r = r[r["Descripcion_Financiador"].astype(str).str.strip()!="None"]
-        if not r.empty:
-            html_c4 = hacer_barras(r["Descripcion_Financiador"].tolist(), r["N"].tolist(), DGRIS)
+        rows = (df_f.filter(pl.col("Descripcion_Financiador").is_not_null())
+                .group_by("Descripcion_Financiador").agg(pl.len().alias("N"))
+                .sort("N",descending=True).head(6).rows(named=True))
+        rows = [r for r in rows if str(r["Descripcion_Financiador"]).strip() not in ("None","")]
+        if rows:
+            html_c4 = hacer_barras([r["Descripcion_Financiador"] for r in rows],
+                                    [r["N"] for r in rows], DGRIS)
 
     # ── Personal ──
     # El valor del select es el ÍNDICE numérico ("0", "1", ...) para evitar
     # problemas con apellidos compuestos como "DE LA CRUZ"
     cols_p = [c for c in ["Apellido_Paterno_Personal","Nombres_Personal"] if c in df_f.columns]
     html_t_personal = ""
-    # Lista de (label, ap, nom) — índice 0 = "— Todos —"
     personal_data = [("— Todos —", "", "")]
-    res_p = pd.DataFrame()
+
     if cols_p and total_atenciones>0:
-        res_p = (df_f.group_by(cols_p).agg(pl.count().alias("Total_Atenciones"))
-                 .sort("Total_Atenciones",descending=True).to_pandas())
-        for _, row in res_p.iterrows():
+        res_p_rows = (df_f.group_by(cols_p).agg(pl.len().alias("Total_Atenciones"))
+                      .sort("Total_Atenciones",descending=True).rows(named=True))
+        for row in res_p_rows:
             ap  = str(row.get("Apellido_Paterno_Personal","") or "").strip()
             nom = str(row.get("Nombres_Personal","") or "").strip()
             personal_data.append((f"{ap} {nom}".strip(), ap, nom))
 
-    # p_personal es un índice ("0","1","2"...)
-    try:
-        p_idx = int(p_personal) if p_personal and p_personal.isdigit() else 0
-    except:
-        p_idx = 0
-    p_idx = max(0, min(p_idx, len(personal_data)-1))
+        # Índice seleccionado
+        try:
+            p_idx = int(p_personal) if p_personal and p_personal.isdigit() else 0
+        except:
+            p_idx = 0
+        p_idx = max(0, min(p_idx, len(personal_data)-1))
+        sel_label, sel_ap, sel_nom = personal_data[p_idx]
 
-    sel_label, sel_ap, sel_nom = personal_data[p_idx]
-
-    if not res_p.empty:
+        # Construir tabla personal (pequeña — solo N personal) con pandas
+        import pandas as pd
+        df_personal_pd = pd.DataFrame(res_p_rows)
         if p_idx > 0:
-            res_p_disp = res_p.iloc[[p_idx-1]].copy()
+            mask = df_personal_pd.get("Apellido_Paterno_Personal","").astype(str).str.strip() == sel_ap
+            if "Nombres_Personal" in df_personal_pd.columns:
+                mask = mask & (df_personal_pd["Nombres_Personal"].astype(str).str.strip() == sel_nom)
+            res_p_disp = df_personal_pd[mask]
         else:
             fila_tot = pd.DataFrame({"Apellido_Paterno_Personal":["TOTAL GENERAL"],
                                      "Nombres_Personal":[""],
-                                     "Total_Atenciones":[int(res_p["Total_Atenciones"].sum())]})
-            res_p_disp = pd.concat([res_p, fila_tot], ignore_index=True)
+                                     "Total_Atenciones":[int(df_personal_pd["Total_Atenciones"].sum())]})
+            res_p_disp = pd.concat([df_personal_pd, fila_tot], ignore_index=True)
         html_t_personal = tabla_html(res_p_disp, num_cols=["Total_Atenciones"])
+    else:
+        p_idx = 0
+        sel_label, sel_ap, sel_nom = "— Todos —", "", ""
 
     # Opciones para el select — valor = índice numérico
     opciones_personal_sel = [(str(i), lbl) for i, (lbl,_,_) in enumerate(personal_data)]
@@ -689,17 +700,19 @@ def tablero_his():
         if "Nombres_Personal" in df_f.columns and sel_nom:
             _f = _f & (pl.col("Nombres_Personal").cast(pl.Utf8).str.strip_chars()==sel_nom)
         df_para_pac = df_f.filter(_f)
-    df_lista = (df_para_pac
-                .filter(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
-                        .str.strip_chars().str.contains(r"^[0-9]+$"))
-                .select(cols_pac)
-                .unique(subset=["Numero_Documento_Paciente"],keep="first")
-                .to_pandas())
+    df_lista_pl = (df_para_pac
+                   .filter(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
+                           .str.strip_chars().str.contains(r"^[0-9]+$"))
+                   .select(cols_pac)
+                   .unique(subset=["Numero_Documento_Paciente"],keep="first"))
     if p_dni:
-        df_lista = df_lista[df_lista["Numero_Documento_Paciente"].astype(str).str.contains(p_dni,na=False)]
-    if "Fecha_Ultima_Regla" in df_lista.columns:
-        df_lista["Fecha_Ultima_Regla"] = (pd.to_datetime(df_lista["Fecha_Ultima_Regla"],errors="coerce")
-                                          .dt.strftime("%d-%m-%Y").fillna(""))
+        df_lista_pl = df_lista_pl.filter(
+            pl.col("Numero_Documento_Paciente").cast(pl.Utf8).str.contains(p_dni))
+    if "Fecha_Ultima_Regla" in df_lista_pl.columns:
+        df_lista_pl = df_lista_pl.with_columns(
+            pl.col("Fecha_Ultima_Regla").cast(pl.Utf8).fill_null("").alias("Fecha_Ultima_Regla"))
+    # Convertir solo la tabla final (pequeña) a pandas para el render HTML
+    df_lista = df_lista_pl.to_pandas()
     n_pac_filt  = len(df_lista)
     html_t_pac  = tabla_html(df_lista, fecha_cols=["Fecha_Ultima_Regla"])
 
