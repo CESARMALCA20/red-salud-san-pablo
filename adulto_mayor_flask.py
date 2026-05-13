@@ -113,8 +113,17 @@ def _get_df():
         cols_leer = [c for c in todas if c.strip() in cols_necesarias]
         df = pl.read_parquet(PARQUET_PATH, columns=cols_leer if cols_leer else None)
         df = df.rename({col: col.strip() for col in df.columns})
-        # Pre-filtrar por edad para reducir memoria
         df = df.filter((pl.col('Anio_Actual_Paciente') >= 60) & (pl.col('Anio_Actual_Paciente') <= 200))
+        # Pre-procesar columnas una sola vez
+        df = df.with_columns([
+            pl.col("Fecha_Atencion").cast(pl.Date),
+            pl.col("Fecha_Nacimiento_Paciente").cast(pl.Date),
+            pl.col("Fecha_Atencion").dt.month().alias("Mes_Num"),
+            pl.col("Fecha_Atencion").dt.strftime("%B").alias("Mes_Nombre"),
+            pl.col("Nombre_Establecimiento").str.strip_chars(),
+            pl.col("Codigo_Item").cast(pl.Utf8).str.strip_chars().str.to_uppercase(),
+            pl.col("Valor_Lab").cast(pl.Utf8).str.strip_chars().fill_null(""),
+        ]).with_columns(pl.col("Mes_Nombre").replace(MESES_ES))
         _DF_CACHE = df
         return _DF_CACHE, None
     except Exception as e:
@@ -125,17 +134,7 @@ def procesar_datos(ipress_sel, mes_sel, dni_raw):
     if err:
         return None, err
 
-    df = df_raw.with_columns([
-        pl.col("Fecha_Atencion").cast(pl.Date),
-        pl.col("Fecha_Nacimiento_Paciente").cast(pl.Date),
-        pl.col("Fecha_Atencion").dt.month().alias("Mes_Num"),
-        pl.col("Fecha_Atencion").dt.strftime("%B").alias("Mes_Nombre"),
-        pl.col("Nombre_Establecimiento").str.strip_chars(),
-        pl.col("Codigo_Item").cast(pl.Utf8).str.strip_chars().str.to_uppercase(),
-        pl.col("Valor_Lab").cast(pl.Utf8).str.strip_chars().fill_null(""),
-    ]).with_columns(pl.col("Mes_Nombre").replace(MESES_ES))
-
-    # filtro de edad ya aplicado en _get_df()
+    df = df_raw  # columnas ya procesadas en cache
 
     lista_ipress = sorted([str(i).strip() for i in df["Nombre_Establecimiento"].unique().to_list()])
     lista_meses_df = df.select(["Mes_Num","Mes_Nombre"]).unique().sort("Mes_Num")
