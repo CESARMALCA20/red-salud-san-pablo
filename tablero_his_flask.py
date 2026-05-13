@@ -574,7 +574,7 @@ def tablero_his():
     p_edad     = request.args.getlist("edad")
     p_desde    = request.args.get("desde","")
     p_hasta    = request.args.get("hasta","")
-    p_personal = request.args.get("personal","")
+    p_personal = request.args.get("personal","")  # formato: "AP||NOM"
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
     try:
@@ -745,18 +745,22 @@ def tablero_his():
             nom = str(row.get("Nombres_Personal","") or "").strip()
             personal_data.append((f"{ap} {nom}".strip(), ap, nom))
 
-        # Índice seleccionado
-        try:
-            p_idx = int(p_personal) if p_personal and p_personal.isdigit() else 0
-        except:
-            p_idx = 0
-        p_idx = max(0, min(p_idx, len(personal_data)-1))
-        sel_label, sel_ap, sel_nom = personal_data[p_idx]
+        # Buscar por "AP||NOM" — estable ante cambios de filtro
+        sel_ap = sel_nom = sel_label = ""
+        p_idx = 0
+        if p_personal and "||" in p_personal:
+            parts = p_personal.split("||", 1)
+            sel_ap  = parts[0].strip()
+            sel_nom = parts[1].strip()
+            for i, (lbl, ap, nom) in enumerate(personal_data):
+                if ap == sel_ap and nom == sel_nom:
+                    p_idx = i; sel_label = lbl; break
+        # sel_ap ya está vacío si no se encontró match
 
         # Construir tabla personal (pequeña — solo N personal) con pandas
         import pandas as pd
         df_personal_pd = pd.DataFrame(res_p_rows)
-        if p_idx > 0:
+        if sel_ap:
             mask = df_personal_pd.get("Apellido_Paterno_Personal","").astype(str).str.strip() == sel_ap
             if "Nombres_Personal" in df_personal_pd.columns:
                 mask = mask & (df_personal_pd["Nombres_Personal"].astype(str).str.strip() == sel_nom)
@@ -772,14 +776,14 @@ def tablero_his():
         sel_label, sel_ap, sel_nom = "— Todos —", "", ""
 
     # Opciones para el select — valor = índice numérico
-    opciones_personal_sel = [(str(i), lbl) for i, (lbl,_,_) in enumerate(personal_data)]
+    opciones_personal_sel = [(f"{ap}||{nom}" if ap else "", lbl) for lbl,ap,nom in personal_data]
 
     # ── Pacientes ──
     cols_pac = ["Numero_Documento_Paciente"]
     for c in ["Nombres_Paciente","Apellido_Paterno_Paciente","Fecha_Ultima_Regla"]:
         if c in df_f.columns: cols_pac.append(c)
     df_para_pac = df_f.clone()
-    if p_idx > 0 and cols_p:
+    if sel_ap and cols_p:
         _f = pl.lit(True)
         if "Apellido_Paterno_Personal" in df_f.columns:
             _f = _f & (pl.col("Apellido_Paterno_Personal").cast(pl.Utf8).str.strip_chars()==sel_ap)
@@ -844,12 +848,12 @@ def tablero_his():
     bb = "rgba(28,57,142,0.08)" if n_pac_filt>0 else "rgba(220,38,38,0.07)"
     bbd= "rgba(28,57,142,0.2)"  if n_pac_filt>0 else "rgba(220,38,38,0.2)"
     dni_hint = f" · DNI: {p_dni}" if p_dni else ""
-    titulo_pac = ("Pacientes de "+sel_label if p_idx > 0 else "Lista de Pacientes")
+    titulo_pac = ("Pacientes de "+sel_label if sel_ap else "Lista de Pacientes")
     badge_pac = (f'<span class="pac-badge" style="color:{bc};background:{bb};border:1px solid {bbd};">'
                  f'● {n_pac_filt:,}{dni_hint}</span>')
 
     badge_personal = ""
-    if p_idx > 0:
+    if sel_ap:
         badge_personal = (f'<div style="display:inline-flex;align-items:center;gap:10px;background:#e8eef8;'
                           f'border:1px solid #c5d3ea;border-radius:20px;padding:6px 16px;margin-bottom:10px;'
                           f'font-family:Inter,sans-serif;font-size:13px;color:#334155;">'
@@ -859,11 +863,11 @@ def tablero_his():
                    [("item",i) for i in p_item]+[("edad",e) for e in p_edad]+
                    ([("desde",p_desde)] if p_desde else [])+([("hasta",p_hasta)] if p_hasta else []))
     limpiar_tabla = (f'<a href="/tablero-his?{qs}" style="font-size:12px;color:#94a3b8;text-decoration:none;">✕ Limpiar</a>'
-                     if p_idx > 0 or p_dni else "")
+                     if sel_ap or p_dni else "")
 
     # Opciones select personal (pre-construidas para evitar f-string anidado)
     _sel_personal_opts = ''.join(
-        '<option value="' + v + '"' + (' selected' if str(p_idx)==v else '') + '>' + lbl + '</option>'
+        '<option value="' + v + '"' + (' selected' if v == (f'{sel_ap}||{sel_nom}' if sel_ap else '') else '') + '>' + lbl + '</option>'
         for v,lbl in opciones_personal_sel
     )
 
@@ -911,7 +915,7 @@ def tablero_his():
         f'<input type="date" name="hasta" value="{p_hasta}" min="{min_fecha_str}" max="{max_fecha_str}" {cal_disabled}></div>'
         f'<div style="display:flex;align-items:center;">{cal_extra}</div>'
         '</div>'
-        f'<input type="hidden" name="personal" value="{p_idx}">'
+        f'<input type="hidden" name="personal" value="{sel_ap}||{sel_nom}">'
         f'<input type="hidden" name="dni" value="{p_dni}">'
         '<div style="display:flex;align-items:center;gap:16px;margin-top:14px;">'
         '<button type="submit" class="btn">Aplicar filtros</button>'
@@ -959,7 +963,7 @@ def tablero_his():
         f'<input type="text" name="dni" placeholder="Ej: 12345678" value="{p_dni}" maxlength="8"'
         ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="flex:1;">'
         '<button type="submit" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0;">Buscar</button>'
-        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if p_idx > 0 or p_dni else '')
+        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if sel_ap or p_dni else '')
         + '</div></div></div></form>'
         f'{badge_personal}'
         '<div class="tables-grid">'
