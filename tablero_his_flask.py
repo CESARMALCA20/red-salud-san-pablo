@@ -197,7 +197,7 @@ function initDropdowns() {
         txtEl.classList.add('placeholder');
         badge.style.display = 'none';
       } else {
-        txtEl.textContent = sel.join(', ');
+        txtEl.textContent = sel.length <= 2 ? sel.join(', ') : sel.slice(0,2).join(', ') + ' +' + (sel.length-2) + ' más';
         txtEl.classList.remove('placeholder');
         badge.textContent = sel.length;
         badge.style.display = 'inline-block';
@@ -207,53 +207,53 @@ function initDropdowns() {
       filter = (filter||'').toLowerCase();
       list.innerHTML = '';
       var opts = Array.from(hidden.options);
-      var visible = opts.filter(function(o){
-        return !filter || o.value.toLowerCase().includes(filter);
-      });
-      if (visible.length===0) {
-        list.innerHTML = '<div class="dd-empty">Sin resultados</div>'; return;
-      }
+      var visible = opts.filter(function(o){ return !filter || o.value.toLowerCase().includes(filter); });
+      if (visible.length===0) { list.innerHTML = '<div class="dd-empty">Sin resultados</div>'; return; }
       visible.forEach(function(opt) {
-        var sel = opt.selected;
         var item = document.createElement('div');
-        item.className = 'dd-item' + (sel?' selected':'');
-        item.innerHTML = '<input type="checkbox"' + (sel?' checked':'') + '><span>' + opt.value + '</span>';
-        item.querySelector('input').addEventListener('change', function(e) {
-          opt.selected = e.target.checked;
-          item.classList.toggle('selected', e.target.checked);
+        item.className = 'dd-item' + (opt.selected ? ' selected' : '');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = opt.selected;
+        var lbl = document.createElement('span');
+        lbl.textContent = opt.value;
+        item.appendChild(cb); item.appendChild(lbl);
+        // Click en item completo — no cierra el panel
+        item.addEventListener('click', function(e) {
+          e.stopPropagation();
+          cb.checked = !cb.checked;
+          opt.selected = cb.checked;
+          item.classList.toggle('selected', cb.checked);
           updateTrigger();
         });
+        cb.addEventListener('click', function(e) { e.stopPropagation(); });
         list.appendChild(item);
       });
     }
     function openPanel() {
       document.querySelectorAll('.dd-panel.open').forEach(function(p){
-        if(p!==panel){p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');}
+        if (p!==panel){p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');}
       });
-      trigger.classList.add('open');
-      panel.classList.add('open');
+      trigger.classList.add('open'); panel.classList.add('open');
       if(search){search.value='';search.focus();}
       renderItems('');
     }
     function closePanel(){trigger.classList.remove('open');panel.classList.remove('open');}
-
-    trigger.addEventListener('click', function(e){
-      e.stopPropagation();
-      panel.classList.contains('open') ? closePanel() : openPanel();
-    });
-    if(search) search.addEventListener('input',function(){renderItems(this.value);});
-    if(btnClear) btnClear.addEventListener('click',function(e){
+    trigger.addEventListener('click',function(e){e.stopPropagation();panel.classList.contains('open')?closePanel():openPanel();});
+    panel.addEventListener('click',function(e){e.stopPropagation();});
+    if(search){
+      search.addEventListener('input',function(){renderItems(this.value);});
+      search.addEventListener('click',function(e){e.stopPropagation();});
+    }
+    if(btnClear){btnClear.addEventListener('click',function(e){
       e.stopPropagation();
       Array.from(hidden.options).forEach(function(o){o.selected=false;});
-      renderItems(search?search.value:'');
-      updateTrigger();
-    });
+      renderItems(search?search.value:''); updateTrigger();
+    });}
     updateTrigger();
   });
-  document.addEventListener('click', function(){
+  document.addEventListener('click',function(){
     document.querySelectorAll('.dd-panel.open').forEach(function(p){
-      p.classList.remove('open');
-      p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
+      p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
     });
   });
 }
