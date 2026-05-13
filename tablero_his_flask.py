@@ -16,7 +16,6 @@ tablero_his_bp = Blueprint("tablero_his", __name__)
 
 BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
 ARCHIVO_PARQUET = os.path.join(BASE_DIR, "data", "reporte.parquet")
-_DF_CACHE_HIS = None
 
 MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
          7:"Julio",8:"Agosto",9:"Setiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
@@ -197,7 +196,7 @@ function initDropdowns() {
         txtEl.classList.add('placeholder');
         badge.style.display = 'none';
       } else {
-        txtEl.textContent = sel.length <= 2 ? sel.join(', ') : sel.slice(0,2).join(', ') + ' +' + (sel.length-2) + ' más';
+        txtEl.textContent = sel.join(', ');
         txtEl.classList.remove('placeholder');
         badge.textContent = sel.length;
         badge.style.display = 'inline-block';
@@ -207,77 +206,79 @@ function initDropdowns() {
       filter = (filter||'').toLowerCase();
       list.innerHTML = '';
       var opts = Array.from(hidden.options);
-      var visible = opts.filter(function(o){ return !filter || o.value.toLowerCase().includes(filter); });
-      if (visible.length===0) { list.innerHTML = '<div class="dd-empty">Sin resultados</div>'; return; }
+      var visible = opts.filter(function(o){
+        return !filter || o.value.toLowerCase().includes(filter);
+      });
+      if (visible.length===0) {
+        list.innerHTML = '<div class="dd-empty">Sin resultados</div>'; return;
+      }
       visible.forEach(function(opt) {
+        var sel = opt.selected;
         var item = document.createElement('div');
-        item.className = 'dd-item' + (opt.selected ? ' selected' : '');
-        var cb = document.createElement('input');
-        cb.type = 'checkbox'; cb.checked = opt.selected;
-        var lbl = document.createElement('span');
-        lbl.textContent = opt.value;
-        item.appendChild(cb); item.appendChild(lbl);
-        // Click en item completo — no cierra el panel
-        item.addEventListener('click', function(e) {
-          e.stopPropagation();
-          cb.checked = !cb.checked;
-          opt.selected = cb.checked;
-          item.classList.toggle('selected', cb.checked);
+        item.className = 'dd-item' + (sel?' selected':'');
+        item.innerHTML = '<input type="checkbox"' + (sel?' checked':'') + '><span>' + opt.value + '</span>';
+        item.querySelector('input').addEventListener('change', function(e) {
+          opt.selected = e.target.checked;
+          item.classList.toggle('selected', e.target.checked);
           updateTrigger();
         });
-        cb.addEventListener('click', function(e) { e.stopPropagation(); });
         list.appendChild(item);
       });
     }
     function openPanel() {
       document.querySelectorAll('.dd-panel.open').forEach(function(p){
-        if (p!==panel){p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');}
+        if(p!==panel){p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');}
       });
-      trigger.classList.add('open'); panel.classList.add('open');
+      trigger.classList.add('open');
+      panel.classList.add('open');
       if(search){search.value='';search.focus();}
       renderItems('');
     }
-    function closePanel(){
-      trigger.classList.remove('open');panel.classList.remove('open');
-      if(wrap.dataset.autosubmit){
-        // Construir URL sin fechas para que el servidor calcule el rango correcto
-        var params = new URLSearchParams();
-        // Meses seleccionados
-        Array.from(hidden.selectedOptions).forEach(function(o){
-          params.append('mes', o.value);
-        });
-        // Otros filtros (ipress, item, edad) — NO desde/hasta
-        ['ipress','item','edad'].forEach(function(name){
-          var sel = document.querySelector('#formFiltros select[name="'+name+'"]');
-          if(sel){
-            Array.from(sel.selectedOptions).forEach(function(o){
-              params.append(name, o.value);
-            });
-          }
-        });
-        window.location.href = '/tablero-his?' + params.toString();
-      }
-    }
-    trigger.addEventListener('click',function(e){e.stopPropagation();panel.classList.contains('open')?closePanel():openPanel();});
-    panel.addEventListener('click',function(e){e.stopPropagation();});
-    if(search){
-      search.addEventListener('input',function(){renderItems(this.value);});
-      search.addEventListener('click',function(e){e.stopPropagation();});
-    }
-    if(btnClear){btnClear.addEventListener('click',function(e){
+    function closePanel(){trigger.classList.remove('open');panel.classList.remove('open');}
+
+    trigger.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.contains('open') ? closePanel() : openPanel();
+    });
+    if(search) search.addEventListener('input',function(){renderItems(this.value);});
+    if(btnClear) btnClear.addEventListener('click',function(e){
       e.stopPropagation();
       Array.from(hidden.options).forEach(function(o){o.selected=false;});
-      renderItems(search?search.value:''); updateTrigger();
-    });}
+      renderItems(search?search.value:'');
+      updateTrigger();
+    });
     updateTrigger();
   });
-  document.addEventListener('click',function(){
+  document.addEventListener('click', function(){
     document.querySelectorAll('.dd-panel.open').forEach(function(p){
-      p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
+      p.classList.remove('open');
+      p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
     });
   });
 }
-document.addEventListener('DOMContentLoaded', initDropdowns);
+document.addEventListener('DOMContentLoaded', function() {
+  initDropdowns();
+});
+
+// Al aplicar filtros, si el mes cambió respecto a la URL actual, limpiar fechas
+(function(){
+  var form = document.getElementById('formFiltros');
+  if(!form) return;
+  var urlParams = new URLSearchParams(window.location.search);
+  var mesBefore = urlParams.getAll('mes').sort().join(',');
+  
+  form.addEventListener('submit', function(){
+    var mesHidden = form.querySelectorAll('select[name="mes"] option:checked');
+    var mesAfter = Array.from(mesHidden).map(function(o){return o.value;}).sort().join(',');
+    if(mesAfter !== mesBefore){
+      // El mes cambió — limpiar fechas para que el servidor calcule el nuevo rango
+      var d = form.querySelector('input[name="desde"]');
+      var h = form.querySelector('input[name="hasta"]');
+      if(d) d.removeAttribute('name');
+      if(h) h.removeAttribute('name');
+    }
+  });
+})();
 """
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -307,7 +308,7 @@ ARROW_SVG = ('<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
              'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" '
              'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>')
 
-def build_dropdown(name, lista, sel, placeholder="Todos", autosubmit=False):
+def build_dropdown(name, lista, sel, placeholder="Todos"):
     sel_str = {str(s) for s in sel}
     opts_html = sel_opts(lista, sel)
     if sel_str:
@@ -318,9 +319,8 @@ def build_dropdown(name, lista, sel, placeholder="Todos", autosubmit=False):
         txt = placeholder
         badge = '<span class="dd-badge" style="display:none">0</span>'
         ph_class = " placeholder"
-    auto_attr = ' data-autosubmit="1"' if autosubmit else ''
     return (
-        f'<div class="dd-wrap"{auto_attr}>'
+        f'<div class="dd-wrap">'
         f'<div class="dd-trigger" tabindex="0">'
         f'<span class="dd-trigger-text{ph_class}">{txt}</span>'
         f'{badge}'
@@ -480,48 +480,9 @@ def _kpi(label, value, svg_path):
         f'<div class="kpi-label">{label}</div>'
         '</div>'
     )
-def _build_mes_dropdown(nums, noms, sel_nums):
-    """Dropdown de mes: value=número, label=nombre."""
-    sel_set = set(str(s) for s in sel_nums)
-    sel_noms = [MESES.get(int(n), str(n)) for n in sel_nums if str(n).isdigit()]
-    if sel_noms:
-        txt = ', '.join(sel_noms[:2]) + (f' +{len(sel_noms)-2} más' if len(sel_noms)>2 else '')
-        badge = f'<span class="dd-badge">{len(sel_noms)}</span>'
-        ph_class = ''
-    else:
-        txt = 'Todos los meses'
-        badge = '<span class="dd-badge" style="display:none">0</span>'
-        ph_class = ' placeholder'
-    opts = ''.join(
-        f'<option value="{n}"{"  selected" if str(n) in sel_set else ""}>{nom}</option>'
-        for n, nom in zip(nums, noms)
-    )
-    return (
-        f'<div class="dd-wrap" data-autosubmit="1">'
-        f'<div class="dd-trigger" tabindex="0">'
-        f'<span class="dd-trigger-text{ph_class}">{txt}</span>{badge}'
-        f'<span class="dd-arrow">{ARROW_SVG}</span></div>'
-        f'<div class="dd-panel">'
-        f'<div class="dd-search"><input type="text" placeholder="Buscar..."></div>'
-        f'<div class="dd-list"></div>'
-        f'<div class="dd-footer"><span class="dd-btn-clear">Limpiar</span></div>'
-        f'</div>'
-        f'<select name="mes" multiple class="hidden-select">{opts}</select>'
-        f'</div>'
-    )
-
 @tablero_his_bp.route("/tablero-his")
 def tablero_his():
-    # Mes: el select envía números ("1","2"...), mostramos nombres
-    _mes_raw = request.args.getlist("mes") or ["1"]  # default Enero=1
-    # Normalizar a números por si acaso llegan nombres
-    _nom_a_num = {v.lower():str(k) for k,v in MESES.items()}
-    p_mes_nums = []
-    for m in _mes_raw:
-        m = str(m).strip()
-        if m.isdigit(): p_mes_nums.append(m)
-        else: p_mes_nums.append(_nom_a_num.get(m.lower(), "1"))
-    p_mes = [MESES.get(int(n), n) for n in p_mes_nums]  # nombres para display
+    p_mes      = request.args.getlist("mes") or ["Enero"]
     p_ipress   = request.args.getlist("ipress")
     p_item     = request.args.getlist("item")
     p_edad     = request.args.getlist("edad")
@@ -530,23 +491,10 @@ def tablero_his():
     p_personal = request.args.get("personal","")
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
-    global _DF_CACHE_HIS
-    if _DF_CACHE_HIS is None:
-        try:
-            COLS_HIS = [
-                "Mes", "Nombre_Establecimiento", "Codigo_Item", "Descripcion_Item",
-                "Edad_Reg", "Tipo_Diagnostico", "Descripcion_Financiador",
-                "Numero_Documento_Paciente", "Id_Condicion_Servicio",
-                "Apellido_Paterno_Personal", "Nombres_Personal",
-                "Nombres_Paciente", "Apellido_Paterno_Paciente",
-                "Fecha_Ultima_Regla", "Fecha_Atencion",
-            ]
-            todas = pl.read_parquet(ARCHIVO_PARQUET, n_rows=1).columns
-            cols_leer = [c for c in todas if c.strip() in COLS_HIS]
-            _DF_CACHE_HIS = pl.read_parquet(ARCHIVO_PARQUET, columns=cols_leer if cols_leer else None)
-        except Exception as e:
-            return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
-    df_raw = _DF_CACHE_HIS
+    try:
+        df_raw = pl.read_parquet(ARCHIVO_PARQUET)
+    except Exception as e:
+        return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
 
     try:
         mtime = os.path.getmtime(ARCHIVO_PARQUET)
@@ -577,21 +525,30 @@ def tablero_his():
     if p_item:   df_f = df_f.filter(pl.col("Codigo_Item").is_in(p_item))
     if p_edad:   df_f = df_f.filter(pl.col("Edad_Reg").cast(pl.Utf8).is_in(p_edad))
 
-    if p_mes_nums:
-        # Filtrar por número de mes directamente — más robusto
-        try:
-            nums_int = [int(n) for n in p_mes_nums if n.isdigit()]
-            if nums_int:
-                df_f = df_f.filter(pl.col("Mes").cast(pl.Int32).is_in(nums_int))
-        except:
-            pass  # Si falla el cast, continuar sin filtro de mes
+    if p_mes:
+        mapa_num = {
+            "Enero":["1","01","1.0"],"Febrero":["2","02","2.0"],
+            "Marzo":["3","03","3.0"],"Abril":["4","04","4.0"],
+            "Mayo":["5","05","5.0"],"Junio":["6","06","6.0"],
+            "Julio":["7","07","7.0"],"Agosto":["8","08","8.0"],
+            "Setiembre":["9","09","9.0"],"Octubre":["10","10.0"],
+            "Noviembre":["11","11.0"],"Diciembre":["12","12.0"]
+        }
+        lista = []
+        for m in p_mes:
+            lista.append(m)
+            lista.extend(mapa_num.get(m,[]))
+        df_f = (df_f
+                .with_columns(pl.col("Mes").cast(pl.Utf8).str.strip_chars().alias("_m"))
+                .filter(pl.col("_m").is_in(lista))
+                .drop("_m"))
 
     # Calendario
-    calendario_activo = len(p_mes_nums) == 1
+    calendario_activo = len(p_mes) == 1
     min_fecha_str = max_fecha_str = ""
 
     if calendario_activo:
-        primer_mes_n = int(p_mes_nums[0]) if p_mes_nums and p_mes_nums[0].isdigit() else 1
+        primer_mes_n = MESES_INV.get(p_mes[0], 1)
         if COL_FECHA:
             try:
                 _dm = df_raw.filter(
@@ -649,14 +606,14 @@ def tablero_his():
         u_pac    = dc["_dni"].n_unique()
         n_pac    = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="N")["_dni"].n_unique()
         cont_pac = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="C")["_dni"].n_unique()
-        pct_cap  = (n_pac/u_pac) if u_pac>0 else 0.0
+        pct_cap  = (n_pac/u_pac*100) if u_pac>0 else 0.0
 
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
 
     if "Descripcion_Item" in df_f.columns and total_atenciones>0:
         r = (df_f.group_by("Descripcion_Item").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(5).to_pandas())
+             .sort("N",descending=True).head(6).to_pandas())
         if not r.empty:
             html_c1 = hacer_radar(r["Descripcion_Item"].tolist(), r["N"].tolist())
 
@@ -670,7 +627,7 @@ def tablero_his():
 
     if "Nombre_Establecimiento" in df_f.columns and total_atenciones>0:
         r = (df_f.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(5).to_pandas())
+             .sort("N",descending=True).head(6).to_pandas())
         if not r.empty:
             html_c3 = hacer_barras(r["Nombre_Establecimiento"].tolist(), r["N"].tolist(), DAZUL)
 
@@ -698,27 +655,18 @@ def tablero_his():
             nom = str(row.get("Nombres_Personal","") or "").strip()
             personal_data.append((f"{ap} {nom}".strip(), ap, nom))
 
-    # p_personal es "APELLIDO||NOMBRE" — estable ante cambios de filtro
-    sel_ap = sel_nom = sel_label = ""
-    p_idx = 0
-    if p_personal and "||" in p_personal:
-        parts = p_personal.split("||", 1)
-        sel_ap = parts[0].strip(); sel_nom = parts[1].strip()
-        for i, (lbl, ap, nom) in enumerate(personal_data):
-            if ap == sel_ap and nom == sel_nom:
-                p_idx = i; sel_label = lbl; break
-    if p_idx == 0:
-        sel_label = "— Todos —"; sel_ap = ""; sel_nom = ""
+    # p_personal es un índice ("0","1","2"...)
+    try:
+        p_idx = int(p_personal) if p_personal and p_personal.isdigit() else 0
+    except:
+        p_idx = 0
+    p_idx = max(0, min(p_idx, len(personal_data)-1))
+
+    sel_label, sel_ap, sel_nom = personal_data[p_idx]
 
     if not res_p.empty:
-        if sel_ap:
-            # Buscar la fila que coincide con el personal seleccionado
-            mask = pd.Series([True]*len(res_p), index=res_p.index)
-            if "Apellido_Paterno_Personal" in res_p.columns:
-                mask = mask & (res_p["Apellido_Paterno_Personal"].astype(str).str.strip() == sel_ap)
-            if "Nombres_Personal" in res_p.columns and sel_nom:
-                mask = mask & (res_p["Nombres_Personal"].astype(str).str.strip() == sel_nom)
-            res_p_disp = res_p[mask] if mask.any() else res_p.head(1)
+        if p_idx > 0:
+            res_p_disp = res_p.iloc[[p_idx-1]].copy()
         else:
             fila_tot = pd.DataFrame({"Apellido_Paterno_Personal":["TOTAL GENERAL"],
                                      "Nombres_Personal":[""],
@@ -727,14 +675,14 @@ def tablero_his():
         html_t_personal = tabla_html(res_p_disp, num_cols=["Total_Atenciones"])
 
     # Opciones para el select — valor = índice numérico
-    opciones_personal_sel = [(f'{ap}||{nom}' if ap else '', lbl) for lbl,ap,nom in personal_data]
+    opciones_personal_sel = [(str(i), lbl) for i, (lbl,_,_) in enumerate(personal_data)]
 
     # ── Pacientes ──
     cols_pac = ["Numero_Documento_Paciente"]
     for c in ["Nombres_Paciente","Apellido_Paterno_Paciente","Fecha_Ultima_Regla"]:
         if c in df_f.columns: cols_pac.append(c)
     df_para_pac = df_f.clone()
-    if sel_ap and cols_p:
+    if p_idx > 0 and cols_p:
         _f = pl.lit(True)
         if "Apellido_Paterno_Personal" in df_f.columns:
             _f = _f & (pl.col("Apellido_Paterno_Personal").cast(pl.Utf8).str.strip_chars()==sel_ap)
@@ -764,9 +712,9 @@ def tablero_his():
     cal_disabled = "" if calendario_activo else "disabled"
     lbl_clase = "active" if calendario_activo else ""
     lbl_suf   = "" if calendario_activo else " — inactivo"
-    if len(p_mes_nums)==0:
+    if len(p_mes)==0:
         cal_extra = '<div class="cal-msg">📅 Selecciona <b>un mes</b> para activar el filtro de días</div>'
-    elif len(p_mes_nums)==1:
+    elif len(p_mes)==1:
         if p_desde and p_hasta:
             try:
                 d_s = datetime.date.fromisoformat(p_desde).strftime("%d/%m/%Y")
@@ -781,11 +729,11 @@ def tablero_his():
             except: cal_extra=""
         else: cal_extra=""
     else:
-        cal_extra = f'<div class="cal-msg">⚠️ Selecciona <b>un solo mes</b> para el filtro de días (tienes {len(p_mes_nums)})</div>'
+        cal_extra = f'<div class="cal-msg">⚠️ Selecciona <b>un solo mes</b> para el filtro de días (tienes {len(p_mes)})</div>'
 
     # Hidden inputs
     hidden = ""
-    for m in p_mes_nums: hidden += f'<input type="hidden" name="mes"    value="{m}">\n'
+    for m in p_mes:    hidden += f'<input type="hidden" name="mes"    value="{m}">\n'
     for i in p_ipress: hidden += f'<input type="hidden" name="ipress" value="{i}">\n'
     for i in p_item:   hidden += f'<input type="hidden" name="item"   value="{i}">\n'
     for e in p_edad:   hidden += f'<input type="hidden" name="edad"   value="{e}">\n'
@@ -797,18 +745,18 @@ def tablero_his():
     bb = "rgba(28,57,142,0.08)" if n_pac_filt>0 else "rgba(220,38,38,0.07)"
     bbd= "rgba(28,57,142,0.2)"  if n_pac_filt>0 else "rgba(220,38,38,0.2)"
     dni_hint = f" · DNI: {p_dni}" if p_dni else ""
-    titulo_pac = ("Pacientes de "+sel_label if sel_ap else "Lista de Pacientes")
+    titulo_pac = ("Pacientes de "+sel_label if p_idx > 0 else "Lista de Pacientes")
     badge_pac = (f'<span class="pac-badge" style="color:{bc};background:{bb};border:1px solid {bbd};">'
                  f'● {n_pac_filt:,}{dni_hint}</span>')
 
     badge_personal = ""
-    if sel_ap:
+    if p_idx > 0:
         badge_personal = (f'<div style="display:inline-flex;align-items:center;gap:10px;background:#e8eef8;'
                           f'border:1px solid #c5d3ea;border-radius:20px;padding:6px 16px;margin-bottom:10px;'
                           f'font-family:Inter,sans-serif;font-size:13px;color:#334155;">'
                           f'👤 Mostrando pacientes de: <b style="color:#1C398E;">{sel_label}</b></div>')
 
-    qs = urlencode([("mes",m) for m in p_mes_nums]+[("ipress",i) for i in p_ipress]+
+    qs = urlencode([("mes",m) for m in p_mes]+[("ipress",i) for i in p_ipress]+
                    [("item",i) for i in p_item]+[("edad",e) for e in p_edad]+
                    ([("desde",p_desde)] if p_desde else [])+([("hasta",p_hasta)] if p_hasta else []))
     limpiar_tabla = (f'<a href="/tablero-his?{qs}" style="font-size:12px;color:#94a3b8;text-decoration:none;">✕ Limpiar</a>'
@@ -816,7 +764,7 @@ def tablero_his():
 
     # Opciones select personal (pre-construidas para evitar f-string anidado)
     _sel_personal_opts = ''.join(
-        '<option value="' + v + '"' + (' selected' if v == (f'{sel_ap}||{sel_nom}' if sel_ap else '') else '') + '>' + lbl + '</option>'
+        '<option value="' + v + '"' + (' selected' if str(p_idx)==v else '') + '>' + lbl + '</option>'
         for v,lbl in opciones_personal_sel
     )
 
@@ -852,7 +800,7 @@ def tablero_his():
         '<div class="section-label">B\u00fasqueda Avanzada</div>'
         '<div class="card"><form method="GET" action="/tablero-his" id="formFiltros">'
         '<div class="filters-grid">'
-        '<div><div class="filter-label">Mes</div>' + _build_mes_dropdown(meses_nums, meses_noms, p_mes_nums) + '</div>'
+        '<div><div class="filter-label">Mes</div>' + build_dropdown("mes", meses_noms, p_mes, "Todos los meses") + '</div>'
         '<div><div class="filter-label">IPRESS</div>' + build_dropdown("ipress", ipress_opts, p_ipress, "Todas") + '</div>'
         '<div><div class="filter-label">C\u00f3digo \u00cdtem</div>' + build_dropdown("item", item_opts, p_item, "Todos") + '</div>'
         '<div><div class="filter-label">Edad Paciente</div>' + build_dropdown("edad", edad_opts, p_edad, "Todas") + '</div>'
@@ -864,7 +812,7 @@ def tablero_his():
         f'<input type="date" name="hasta" value="{p_hasta}" min="{min_fecha_str}" max="{max_fecha_str}" {cal_disabled}></div>'
         f'<div style="display:flex;align-items:center;">{cal_extra}</div>'
         '</div>'
-        f'<input type="hidden" name="personal" value="{sel_ap}||{sel_nom}">'
+        f'<input type="hidden" name="personal" value="{p_idx}">'
         f'<input type="hidden" name="dni" value="{p_dni}">'
         '<div style="display:flex;align-items:center;gap:16px;margin-top:14px;">'
         '<button type="submit" class="btn">Aplicar filtros</button>'
@@ -882,7 +830,7 @@ def tablero_his():
                '<circle cx="12" cy="6" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>')
         + _kpi("Continuadores",f"{cont_pac:,}",
                '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')
-        + _kpi("% Captaci\u00f3n",f"{pct_cap:.2f}",
+        + _kpi("% Captaci\u00f3n",f"{pct_cap:.1f}%",
                '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>')
         + '</div>'
 
@@ -912,7 +860,7 @@ def tablero_his():
         f'<input type="text" name="dni" placeholder="Ej: 12345678" value="{p_dni}" maxlength="8"'
         ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="flex:1;">'
         '<button type="submit" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0;">Buscar</button>'
-        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if sel_ap or p_dni else '')
+        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if p_idx > 0 or p_dni else '')
         + '</div></div></div></form>'
         f'{badge_personal}'
         '<div class="tables-grid">'
