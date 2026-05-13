@@ -16,6 +16,7 @@ tablero_his_bp = Blueprint("tablero_his", __name__)
 
 BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
 ARCHIVO_PARQUET = os.path.join(BASE_DIR, "data", "reporte.parquet")
+_DF_CACHE_HIS = None
 
 MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
          7:"Julio",8:"Agosto",9:"Setiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
@@ -469,10 +470,13 @@ def tablero_his():
     p_personal = request.args.get("personal","")
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
-    try:
-        df_raw = pl.read_parquet(ARCHIVO_PARQUET)
-    except Exception as e:
-        return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
+    global _DF_CACHE_HIS
+    if _DF_CACHE_HIS is None:
+        try:
+            _DF_CACHE_HIS = pl.read_parquet(ARCHIVO_PARQUET)
+        except Exception as e:
+            return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
+    df_raw = _DF_CACHE_HIS
 
     try:
         mtime = os.path.getmtime(ARCHIVO_PARQUET)
