@@ -1,0 +1,8 @@
+flask
+polars
+pandas
+plotly
+pytz
+gunicorn
+
+
