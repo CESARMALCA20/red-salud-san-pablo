@@ -477,9 +477,47 @@ def _kpi(label, value, svg_path):
         f'<div class="kpi-label">{label}</div>'
         '</div>'
     )
+def _build_mes_dropdown(nums, noms, sel_nums):
+    """Dropdown de mes con value=número para filtro robusto."""
+    sel_set = set(str(s) for s in sel_nums)
+    arrow = ARROW_SVG
+    if sel_nums:
+        sel_noms = [MESES.get(int(n), n) for n in sel_nums if str(n).isdigit()]
+        txt = ', '.join(sel_noms[:2]) + (f' +{len(sel_noms)-2} más' if len(sel_noms)>2 else '')
+        badge = f'<span class="dd-badge">{len(sel_nums)}</span>'
+        ph_class = ''
+    else:
+        txt = 'Todos los meses'; badge = '<span class="dd-badge" style="display:none">0</span>'; ph_class = ' placeholder'
+    opts = ''.join(
+        f'<option value="{n}"{"  selected" if str(n) in sel_set else ""}>{nom}</option>'
+        for n, nom in zip(nums, noms)
+    )
+    return (
+        f'<div class="dd-wrap" data-autosubmit="1">'
+        f'<div class="dd-trigger" tabindex="0">'
+        f'<span class="dd-trigger-text{ph_class}">{txt}</span>{badge}'
+        f'<span class="dd-arrow">{arrow}</span></div>'
+        f'<div class="dd-panel">'
+        f'<div class="dd-search"><input type="text" placeholder="Buscar..."></div>'
+        f'<div class="dd-list"></div>'
+        f'<div class="dd-footer"><span class="dd-btn-clear">Limpiar</span></div>'
+        f'</div>'
+        f'<select name="mes" multiple class="hidden-select">{opts}</select>'
+        f'</div>'
+    )
+
 @tablero_his_bp.route("/tablero-his")
 def tablero_his():
-    p_mes      = request.args.getlist("mes") or ["Enero"]
+    # Mes: el select envía números ("1","2"...), mostramos nombres
+    _mes_raw = request.args.getlist("mes") or ["1"]  # default Enero=1
+    # Normalizar a números por si acaso llegan nombres
+    _nom_a_num = {v.lower():str(k) for k,v in MESES.items()}
+    p_mes_nums = []
+    for m in _mes_raw:
+        m = str(m).strip()
+        if m.isdigit(): p_mes_nums.append(m)
+        else: p_mes_nums.append(_nom_a_num.get(m.lower(), "1"))
+    p_mes = [MESES.get(int(n), n) for n in p_mes_nums]  # nombres para display
     p_ipress   = request.args.getlist("ipress")
     p_item     = request.args.getlist("item")
     p_edad     = request.args.getlist("edad")
@@ -535,30 +573,21 @@ def tablero_his():
     if p_item:   df_f = df_f.filter(pl.col("Codigo_Item").is_in(p_item))
     if p_edad:   df_f = df_f.filter(pl.col("Edad_Reg").cast(pl.Utf8).is_in(p_edad))
 
-    if p_mes:
-        mapa_num = {
-            "Enero":["1","01","1.0"],"Febrero":["2","02","2.0"],
-            "Marzo":["3","03","3.0"],"Abril":["4","04","4.0"],
-            "Mayo":["5","05","5.0"],"Junio":["6","06","6.0"],
-            "Julio":["7","07","7.0"],"Agosto":["8","08","8.0"],
-            "Setiembre":["9","09","9.0"],"Octubre":["10","10.0"],
-            "Noviembre":["11","11.0"],"Diciembre":["12","12.0"]
-        }
-        lista = []
-        for m in p_mes:
-            lista.append(m)
-            lista.extend(mapa_num.get(m,[]))
-        df_f = (df_f
-                .with_columns(pl.col("Mes").cast(pl.Utf8).str.strip_chars().alias("_m"))
-                .filter(pl.col("_m").is_in(lista))
-                .drop("_m"))
+    if p_mes_nums:
+        # Filtrar por número de mes directamente — más robusto
+        try:
+            nums_int = [int(n) for n in p_mes_nums if n.isdigit()]
+            if nums_int:
+                df_f = df_f.filter(pl.col("Mes").cast(pl.Int32).is_in(nums_int))
+        except:
+            pass  # Si falla el cast, continuar sin filtro de mes
 
     # Calendario
-    calendario_activo = len(p_mes) == 1
+    calendario_activo = len(p_mes_nums) == 1
     min_fecha_str = max_fecha_str = ""
 
     if calendario_activo:
-        primer_mes_n = MESES_INV.get(p_mes[0], 1)
+        primer_mes_n = int(p_mes_nums[0]) if p_mes_nums and p_mes_nums[0].isdigit() else 1
         if COL_FECHA:
             try:
                 _dm = df_raw.filter(
@@ -731,9 +760,9 @@ def tablero_his():
     cal_disabled = "" if calendario_activo else "disabled"
     lbl_clase = "active" if calendario_activo else ""
     lbl_suf   = "" if calendario_activo else " — inactivo"
-    if len(p_mes)==0:
+    if len(p_mes_nums)==0:
         cal_extra = '<div class="cal-msg">📅 Selecciona <b>un mes</b> para activar el filtro de días</div>'
-    elif len(p_mes)==1:
+    elif len(p_mes_nums)==1:
         if p_desde and p_hasta:
             try:
                 d_s = datetime.date.fromisoformat(p_desde).strftime("%d/%m/%Y")
@@ -748,11 +777,11 @@ def tablero_his():
             except: cal_extra=""
         else: cal_extra=""
     else:
-        cal_extra = f'<div class="cal-msg">⚠️ Selecciona <b>un solo mes</b> para el filtro de días (tienes {len(p_mes)})</div>'
+        cal_extra = f'<div class="cal-msg">⚠️ Selecciona <b>un solo mes</b> para el filtro de días (tienes {len(p_mes_nums)})</div>'
 
     # Hidden inputs
     hidden = ""
-    for m in p_mes:    hidden += f'<input type="hidden" name="mes"    value="{m}">\n'
+    for m in p_mes_nums: hidden += f'<input type="hidden" name="mes"    value="{m}">\n'
     for i in p_ipress: hidden += f'<input type="hidden" name="ipress" value="{i}">\n'
     for i in p_item:   hidden += f'<input type="hidden" name="item"   value="{i}">\n'
     for e in p_edad:   hidden += f'<input type="hidden" name="edad"   value="{e}">\n'
@@ -775,7 +804,7 @@ def tablero_his():
                           f'font-family:Inter,sans-serif;font-size:13px;color:#334155;">'
                           f'👤 Mostrando pacientes de: <b style="color:#1C398E;">{sel_label}</b></div>')
 
-    qs = urlencode([("mes",m) for m in p_mes]+[("ipress",i) for i in p_ipress]+
+    qs = urlencode([("mes",m) for m in p_mes_nums]+[("ipress",i) for i in p_ipress]+
                    [("item",i) for i in p_item]+[("edad",e) for e in p_edad]+
                    ([("desde",p_desde)] if p_desde else [])+([("hasta",p_hasta)] if p_hasta else []))
     limpiar_tabla = (f'<a href="/tablero-his?{qs}" style="font-size:12px;color:#94a3b8;text-decoration:none;">✕ Limpiar</a>'
@@ -819,7 +848,7 @@ def tablero_his():
         '<div class="section-label">B\u00fasqueda Avanzada</div>'
         '<div class="card"><form method="GET" action="/tablero-his" id="formFiltros">'
         '<div class="filters-grid">'
-        '<div><div class="filter-label">Mes</div>' + build_dropdown("mes", meses_noms, p_mes, "Todos los meses", autosubmit=True) + '</div>'
+        '<div><div class="filter-label">Mes</div>' + _build_mes_dropdown(meses_nums, meses_noms, p_mes_nums) + '</div>'
         '<div><div class="filter-label">IPRESS</div>' + build_dropdown("ipress", ipress_opts, p_ipress, "Todas") + '</div>'
         '<div><div class="filter-label">C\u00f3digo \u00cdtem</div>' + build_dropdown("item", item_opts, p_item, "Todos") + '</div>'
         '<div><div class="filter-label">Edad Paciente</div>' + build_dropdown("edad", edad_opts, p_edad, "Todas") + '</div>'
