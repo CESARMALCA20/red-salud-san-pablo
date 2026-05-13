@@ -241,15 +241,18 @@ function initDropdowns() {
       trigger.classList.remove('open');panel.classList.remove('open');
       // Auto-submit si el dropdown tiene data-autosubmit
       if(wrap.dataset.autosubmit){
-        var f = document.getElementById('formFiltros');
-        if(f){
-          // Limpiar fechas para que el servidor calcule el rango del nuevo mes
-          var d = f.querySelector('input[name="desde"]');
-          var h = f.querySelector('input[name="hasta"]');
-          if(d) d.value = '';
-          if(h) h.value = '';
-          f.submit();
-        }
+        // Construir URL limpia con solo el mes seleccionado (sin fechas anteriores)
+        var selectedMeses = Array.from(hidden.selectedOptions).map(function(o){return o.value;});
+        var params = new URLSearchParams();
+        selectedMeses.forEach(function(m){ params.append('mes', m); });
+        // Preservar otros filtros activos (ipress, item, edad) pero NO desde/hasta
+        var otherSelects = document.querySelectorAll('#formFiltros select.hidden-select:not([name="mes"])');
+        otherSelects.forEach(function(sel){
+          Array.from(sel.selectedOptions).forEach(function(o){
+            params.append(sel.name, o.value);
+          });
+        });
+        window.location.href = '/tablero-his?' + params.toString();
       }
     }
     trigger.addEventListener('click',function(e){e.stopPropagation();panel.classList.contains('open')?closePanel():openPanel();});
