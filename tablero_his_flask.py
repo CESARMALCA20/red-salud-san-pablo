@@ -185,77 +185,159 @@ function initDropdowns() {
     var txtEl    = wrap.querySelector('.dd-trigger-text');
     var badge    = wrap.querySelector('.dd-badge');
     var btnClear = wrap.querySelector('.dd-btn-clear');
+    var isMes    = hidden && hidden.name === 'mes';
+    var MAX_SEL  = isMes ? 2 : 9999;
 
     function getSelected() {
-      return Array.from(hidden.selectedOptions).map(function(o){return o.value;});
+      return Array.from(hidden.selectedOptions).map(function(o){ return o.value; });
     }
+
     function updateTrigger() {
       var sel = getSelected();
       if (sel.length === 0) {
-        txtEl.textContent = 'Todos';
+        txtEl.textContent = isMes ? 'Todos los meses' : 'Todos';
         txtEl.classList.add('placeholder');
         badge.style.display = 'none';
       } else {
-        txtEl.textContent = sel.join(', ');
+        // Mostrar nombres — para mes el option tiene texto diferente al value
+        var labels = Array.from(hidden.selectedOptions).map(function(o){ return o.textContent; });
+        txtEl.textContent = labels.length <= 2
+          ? labels.join(', ')
+          : labels.slice(0,2).join(', ') + ' +' + (labels.length-2) + ' más';
         txtEl.classList.remove('placeholder');
         badge.textContent = sel.length;
         badge.style.display = 'inline-block';
       }
     }
+
     function renderItems(filter) {
-      filter = (filter||'').toLowerCase();
+      filter = (filter || '').toLowerCase();
       list.innerHTML = '';
       var opts = Array.from(hidden.options);
-      var visible = opts.filter(function(o){
-        return !filter || o.value.toLowerCase().includes(filter);
+      var visible = opts.filter(function(o) {
+        return !filter || o.textContent.toLowerCase().includes(filter);
       });
-      if (visible.length===0) {
-        list.innerHTML = '<div class="dd-empty">Sin resultados</div>'; return;
+      if (visible.length === 0) {
+        list.innerHTML = '<div class="dd-empty">Sin resultados</div>';
+        return;
       }
       visible.forEach(function(opt) {
-        var sel = opt.selected;
         var item = document.createElement('div');
-        item.className = 'dd-item' + (sel?' selected':'');
-        item.innerHTML = '<input type="checkbox"' + (sel?' checked':'') + '><span>' + opt.value + '</span>';
-        item.querySelector('input').addEventListener('change', function(e) {
-          opt.selected = e.target.checked;
-          item.classList.toggle('selected', e.target.checked);
+        item.className = 'dd-item' + (opt.selected ? ' selected' : '');
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = opt.selected;
+
+        var lbl = document.createElement('span');
+        lbl.textContent = opt.textContent;
+
+        item.appendChild(cb);
+        item.appendChild(lbl);
+
+        // CLICK EN CUALQUIER PARTE DEL ITEM — no cierra el panel
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault(); // evita que el panel pierda foco y se cierre
+          e.stopPropagation();
+
+          var currentSel = Array.from(hidden.selectedOptions).length;
+          if (!opt.selected && currentSel >= MAX_SEL) {
+            // Límite alcanzado
+            var warn = list.querySelector('.dd-max-warn');
+            if (!warn) {
+              warn = document.createElement('div');
+              warn.className = 'dd-max-warn';
+              warn.style.cssText = 'padding:6px 12px;font-size:11px;color:#dc2626;' +
+                'background:#fff5f5;border-top:1px solid #fca5a5;text-align:center;';
+              warn.textContent = 'Máximo ' + MAX_SEL + ' meses permitidos';
+              list.appendChild(warn);
+              setTimeout(function() { if (warn.parentNode) warn.parentNode.removeChild(warn); }, 2000);
+            }
+            return;
+          }
+
+          opt.selected = !opt.selected;
+          cb.checked = opt.selected;
+          item.classList.toggle('selected', opt.selected);
           updateTrigger();
         });
+
         list.appendChild(item);
       });
     }
+
     function openPanel() {
-      document.querySelectorAll('.dd-panel.open').forEach(function(p){
-        if(p!==panel){p.classList.remove('open');p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');}
+      document.querySelectorAll('.dd-panel.open').forEach(function(p) {
+        if (p !== panel) {
+          p.classList.remove('open');
+          p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
+        }
       });
       trigger.classList.add('open');
       panel.classList.add('open');
-      if(search){search.value='';search.focus();}
+      if (search) { search.value = ''; search.focus(); }
       renderItems('');
     }
-    function closePanel(){trigger.classList.remove('open');panel.classList.remove('open');}
 
-    trigger.addEventListener('click', function(e){
+    function closePanel() {
+      trigger.classList.remove('open');
+      panel.classList.remove('open');
+      if (wrap.dataset.autosubmit) {
+        var params = new URLSearchParams();
+        Array.from(hidden.selectedOptions).forEach(function(o) {
+          params.append(hidden.name, o.value);
+        });
+        ['ipress','item','edad'].forEach(function(name) {
+          var sel = document.querySelector('#formFiltros select[name="' + name + '"]');
+          if (sel) {
+            Array.from(sel.selectedOptions).forEach(function(o) {
+              params.append(name, o.value);
+            });
+          }
+        });
+        window.location.href = '/tablero-his?' + params.toString();
+      }
+    }
+
+    // Toggle panel al hacer click en trigger
+    trigger.addEventListener('mousedown', function(e) {
+      e.preventDefault();
       e.stopPropagation();
       panel.classList.contains('open') ? closePanel() : openPanel();
     });
-    if(search) search.addEventListener('input',function(){renderItems(this.value);});
-    if(btnClear) btnClear.addEventListener('click',function(e){
-      e.stopPropagation();
-      Array.from(hidden.options).forEach(function(o){o.selected=false;});
-      renderItems(search?search.value:'');
-      updateTrigger();
-    });
+
+    // Panel no propaga — no se cierra al hacer click dentro
+    panel.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+    // Búsqueda
+    if (search) {
+      search.addEventListener('input', function() { renderItems(this.value); });
+      search.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+    }
+
+    // Limpiar
+    if (btnClear) {
+      btnClear.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        Array.from(hidden.options).forEach(function(o) { o.selected = false; });
+        renderItems(search ? search.value : '');
+        updateTrigger();
+      });
+    }
+
     updateTrigger();
   });
-  document.addEventListener('click', function(){
-    document.querySelectorAll('.dd-panel.open').forEach(function(p){
+
+  // Click fuera → cerrar todos
+  document.addEventListener('mousedown', function() {
+    document.querySelectorAll('.dd-panel.open').forEach(function(p) {
       p.classList.remove('open');
       p.closest('.dd-wrap').querySelector('.dd-trigger').classList.remove('open');
     });
   });
 }
+
 document.addEventListener('DOMContentLoaded', function() {
   initDropdowns();
 });
@@ -483,6 +565,10 @@ def _kpi(label, value, svg_path):
 @tablero_his_bp.route("/tablero-his")
 def tablero_his():
     p_mes      = request.args.getlist("mes") or ["Enero"]
+    # Limitar a máximo 2 meses para evitar Out of Memory en Render gratuito
+    MAX_MESES = 2
+    if len(p_mes) > MAX_MESES:
+        p_mes = p_mes[:MAX_MESES]
     p_ipress   = request.args.getlist("ipress")
     p_item     = request.args.getlist("item")
     p_edad     = request.args.getlist("edad")
@@ -606,7 +692,7 @@ def tablero_his():
         u_pac    = dc["_dni"].n_unique()
         n_pac    = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="N")["_dni"].n_unique()
         cont_pac = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="C")["_dni"].n_unique()
-        pct_cap  = (n_pac/u_pac*100) if u_pac>0 else 0.0
+        pct_cap  = (n_pac/u_pac) if u_pac>0 else 0.0
 
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
@@ -742,7 +828,7 @@ def tablero_his():
             except: cal_extra=""
         else: cal_extra=""
     else:
-        cal_extra = f'<div class="cal-msg">⚠️ Selecciona <b>un solo mes</b> para el filtro de días (tienes {len(p_mes)})</div>'
+        cal_extra = f'<div class="cal-msg">⚠️ Máximo 2 meses permitidos. Selecciona <b>un solo mes</b> para el filtro de días.</div>'
 
     # Hidden inputs
     hidden = ""
@@ -843,7 +929,7 @@ def tablero_his():
                '<circle cx="12" cy="6" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>')
         + _kpi("Continuadores",f"{cont_pac:,}",
                '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')
-        + _kpi("% Captaci\u00f3n",f"{pct_cap:.1f}%",
+        + _kpi("% Captaci\u00f3n",f"{pct_cap:.2f}",
                '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>')
         + '</div>'
 
