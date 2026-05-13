@@ -480,7 +480,7 @@ def tablero_his():
                 "Numero_Documento_Paciente", "Id_Condicion_Servicio",
                 "Apellido_Paterno_Personal", "Nombres_Personal",
                 "Nombres_Paciente", "Apellido_Paterno_Paciente",
-                "Fecha_Ultima_Regla",
+                "Fecha_Ultima_Regla", "Fecha_Atencion",
             ]
             todas = pl.read_parquet(ARCHIVO_PARQUET, n_rows=1).columns
             cols_leer = [c for c in todas if c.strip() in COLS_HIS]
