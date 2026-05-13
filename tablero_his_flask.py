@@ -242,7 +242,14 @@ function initDropdowns() {
       // Auto-submit si el dropdown tiene data-autosubmit
       if(wrap.dataset.autosubmit){
         var f = document.getElementById('formFiltros');
-        if(f) f.submit();
+        if(f){
+          // Limpiar fechas para que el servidor calcule el rango del nuevo mes
+          var d = f.querySelector('input[name="desde"]');
+          var h = f.querySelector('input[name="hasta"]');
+          if(d) d.value = '';
+          if(h) h.value = '';
+          f.submit();
+        }
       }
     }
     trigger.addEventListener('click',function(e){e.stopPropagation();panel.classList.contains('open')?closePanel():openPanel();});
