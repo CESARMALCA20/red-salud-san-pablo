@@ -98,14 +98,32 @@ def extraer_item(df: pd.DataFrame, cod_item: str, id_col: str) -> dict:
         resultado[str(dni)] = f"{fecha_str} ({vlab})" if vlab and vlab not in ["", "nan", "None"] else fecha_str
     return resultado
 
-def procesar_datos(ipress_sel, mes_sel, dni_raw):
+def _get_df():
+    """Carga el parquet una sola vez, solo columnas necesarias, pre-filtrado por edad."""
+    global _DF_CACHE
+    if _DF_CACHE is not None:
+        return _DF_CACHE, None
     if not os.path.exists(PARQUET_PATH):
         return None, "Archivo reporte.parquet no encontrado"
     try:
-        df_raw = pl.read_parquet(PARQUET_PATH)
-        df_raw = df_raw.rename({col: col.strip() for col in df_raw.columns})
+        # Leer solo columnas necesarias para este módulo
+        cols_necesarias = ['Fecha_Atencion', 'Nombre_Establecimiento', 'Numero_Documento_Paciente', 'Apellido_Paterno_Paciente', 'Apellido_Materno_Paciente', 'Nombres_Paciente', 'Fecha_Nacimiento_Paciente', 'Anio_Actual_Paciente', 'Genero', 'Codigo_Item', 'Valor_Lab', 'Codigo_Diagnostico']
+        todas = pl.read_parquet(PARQUET_PATH, n_rows=1).columns
+        todas_limpias = {c: c.strip() for c in todas}
+        cols_leer = [c for c in todas if c.strip() in cols_necesarias]
+        df = pl.read_parquet(PARQUET_PATH, columns=cols_leer if cols_leer else None)
+        df = df.rename({col: col.strip() for col in df.columns})
+        # Pre-filtrar por edad para reducir memoria
+        df = df.filter((pl.col('Anio_Actual_Paciente') >= 60) & (pl.col('Anio_Actual_Paciente') <= 200))
+        _DF_CACHE = df
+        return _DF_CACHE, None
     except Exception as e:
         return None, str(e)
+
+def procesar_datos(ipress_sel, mes_sel, dni_raw):
+    df_raw, err = _get_df()
+    if err:
+        return None, err
 
     df = df_raw.with_columns([
         pl.col("Fecha_Atencion").cast(pl.Date),
@@ -117,7 +135,7 @@ def procesar_datos(ipress_sel, mes_sel, dni_raw):
         pl.col("Valor_Lab").cast(pl.Utf8).str.strip_chars().fill_null(""),
     ]).with_columns(pl.col("Mes_Nombre").replace(MESES_ES))
 
-    df = df.filter((pl.col("Anio_Actual_Paciente") >= 60) & (pl.col("Anio_Actual_Paciente") <= 200))
+    # filtro de edad ya aplicado en _get_df()
 
     lista_ipress = sorted([str(i).strip() for i in df["Nombre_Establecimiento"].unique().to_list()])
     lista_meses_df = df.select(["Mes_Num","Mes_Nombre"]).unique().sort("Mes_Num")
