@@ -461,7 +461,7 @@ def _kpi(label, value, svg_path):
     )
 @tablero_his_bp.route("/tablero-his")
 def tablero_his():
-    p_mes      = request.args.getlist("mes")
+    p_mes      = request.args.getlist("mes") or ["Enero"]
     p_ipress   = request.args.getlist("ipress")
     p_item     = request.args.getlist("item")
     p_edad     = request.args.getlist("edad")
