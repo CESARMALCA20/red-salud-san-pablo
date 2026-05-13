@@ -98,6 +98,8 @@ def extraer_item(df: pd.DataFrame, cod_item: str, id_col: str) -> dict:
         resultado[str(dni)] = f"{fecha_str} ({vlab})" if vlab and vlab not in ["", "nan", "None"] else fecha_str
     return resultado
 
+_DF_CACHE = None  # Cache global del DataFrame
+
 def _get_df():
     """Carga el parquet una sola vez, solo columnas necesarias, pre-filtrado por edad."""
     global _DF_CACHE
