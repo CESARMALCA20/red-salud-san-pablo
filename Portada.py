@@ -10,6 +10,38 @@ import os, subprocess, sys, threading, time, socket, hashlib, secrets
 from datetime import datetime, timedelta
 import pytz, json
 
+# ── DESCARGA PARQUET DESDE GOOGLE DRIVE ──────────────────────────────────────
+DRIVE_FILE_ID = "1w3G9AIfRX62e0mxeMY9MtrvkNF4k5JkJ"
+
+def descargar_parquet():
+    import urllib.request, shutil
+    destino = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "reporte.parquet")
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+
+    if os.path.exists(destino):
+        antiguedad = time.time() - os.path.getmtime(destino)
+        if antiguedad < 6 * 3600:
+            print(f"📦  reporte.parquet en caché ({int(antiguedad/60)} min)")
+            return True
+
+    url = "https://drive.google.com/uc?export=download&id=" + DRIVE_FILE_ID + "&confirm=t"
+    try:
+        print("⬇️   Descargando reporte.parquet desde Google Drive...")
+        tmp = destino + ".tmp"
+        with urllib.request.urlopen(url, timeout=60) as r:
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f)
+        os.replace(tmp, destino)
+        size_mb = os.path.getsize(destino) / 1024 / 1024
+        print(f"✅  Descargado: {size_mb:.1f} MB")
+        return True
+    except Exception as e:
+        print(f"❌  Error descargando parquet: {e}")
+        if os.path.exists(destino):
+            print("⚠️   Usando parquet existente en caché")
+            return True
+        return False
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "rsp-san-pablo-2026-default")
 app.register_blueprint(adulto_mayor_bp)
@@ -98,6 +130,9 @@ USUARIOS = {
         "nombre": "César E. Malca",
     },
 }
+
+# Descargar parquet al importar (gunicorn no pasa por __main__)
+_parquet_ok = descargar_parquet()
 
 # ── PÁGINAS STREAMLIT ────────────────────────────────────────────────────────
 PAGES = {
@@ -489,6 +524,8 @@ if __name__ == "__main__":
     threading.Thread(target=preload_all_streamlit, daemon=True).start()
 
     print("   (los tableros estarán listos en ~15 segundos)\n")
+
+    descargar_parquet()
 
     try:
         port = int(os.environ.get("PORT", 8000))
