@@ -239,18 +239,21 @@ function initDropdowns() {
     }
     function closePanel(){
       trigger.classList.remove('open');panel.classList.remove('open');
-      // Auto-submit si el dropdown tiene data-autosubmit
       if(wrap.dataset.autosubmit){
-        // Construir URL limpia con solo el mes seleccionado (sin fechas anteriores)
-        var selectedMeses = Array.from(hidden.selectedOptions).map(function(o){return o.value;});
+        // Construir URL sin fechas para que el servidor calcule el rango correcto
         var params = new URLSearchParams();
-        selectedMeses.forEach(function(m){ params.append('mes', m); });
-        // Preservar otros filtros activos (ipress, item, edad) pero NO desde/hasta
-        var otherSelects = document.querySelectorAll('#formFiltros select.hidden-select:not([name="mes"])');
-        otherSelects.forEach(function(sel){
-          Array.from(sel.selectedOptions).forEach(function(o){
-            params.append(sel.name, o.value);
-          });
+        // Meses seleccionados
+        Array.from(hidden.selectedOptions).forEach(function(o){
+          params.append('mes', o.value);
+        });
+        // Otros filtros (ipress, item, edad) — NO desde/hasta
+        ['ipress','item','edad'].forEach(function(name){
+          var sel = document.querySelector('#formFiltros select[name="'+name+'"]');
+          if(sel){
+            Array.from(sel.selectedOptions).forEach(function(o){
+              params.append(name, o.value);
+            });
+          }
         });
         window.location.href = '/tablero-his?' + params.toString();
       }
@@ -478,16 +481,17 @@ def _kpi(label, value, svg_path):
         '</div>'
     )
 def _build_mes_dropdown(nums, noms, sel_nums):
-    """Dropdown de mes con value=número para filtro robusto."""
+    """Dropdown de mes: value=número, label=nombre."""
     sel_set = set(str(s) for s in sel_nums)
-    arrow = ARROW_SVG
-    if sel_nums:
-        sel_noms = [MESES.get(int(n), n) for n in sel_nums if str(n).isdigit()]
+    sel_noms = [MESES.get(int(n), str(n)) for n in sel_nums if str(n).isdigit()]
+    if sel_noms:
         txt = ', '.join(sel_noms[:2]) + (f' +{len(sel_noms)-2} más' if len(sel_noms)>2 else '')
-        badge = f'<span class="dd-badge">{len(sel_nums)}</span>'
+        badge = f'<span class="dd-badge">{len(sel_noms)}</span>'
         ph_class = ''
     else:
-        txt = 'Todos los meses'; badge = '<span class="dd-badge" style="display:none">0</span>'; ph_class = ' placeholder'
+        txt = 'Todos los meses'
+        badge = '<span class="dd-badge" style="display:none">0</span>'
+        ph_class = ' placeholder'
     opts = ''.join(
         f'<option value="{n}"{"  selected" if str(n) in sel_set else ""}>{nom}</option>'
         for n, nom in zip(nums, noms)
@@ -496,7 +500,7 @@ def _build_mes_dropdown(nums, noms, sel_nums):
         f'<div class="dd-wrap" data-autosubmit="1">'
         f'<div class="dd-trigger" tabindex="0">'
         f'<span class="dd-trigger-text{ph_class}">{txt}</span>{badge}'
-        f'<span class="dd-arrow">{arrow}</span></div>'
+        f'<span class="dd-arrow">{ARROW_SVG}</span></div>'
         f'<div class="dd-panel">'
         f'<div class="dd-search"><input type="text" placeholder="Buscar..."></div>'
         f'<div class="dd-list"></div>'
