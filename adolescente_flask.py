@@ -60,63 +60,94 @@ MESES_ES = {
     "September":"Septiembre","October":"Octubre","November":"Noviembre","December":"Diciembre"
 }
 
-def extraer_item(df: pd.DataFrame, cod_item: str, id_col: str) -> dict:
+def extraer_item_polars(df: pl.DataFrame, cod_item: str, id_col: str) -> dict:
+    """Extrae items usando Polars puro — mucho más eficiente que pandas groupby."""
     cod_upper = cod_item.strip().upper()
+
     if id_col == "99801_TA":
-        mask = (df["Codigo_Item"] == cod_upper) & (df["Valor_Lab"] == "TA")
+        sub = df.filter((pl.col("Codigo_Item") == cod_upper) & (pl.col("Valor_Lab") == "TA"))
     elif id_col == "99801_1":
-        mask = (df["Codigo_Item"] == cod_upper) & (df["Valor_Lab"] == "1")
+        sub = df.filter((pl.col("Codigo_Item") == cod_upper) & (pl.col("Valor_Lab") == "1"))
     else:
-        mask = df["Codigo_Item"] == cod_upper
-    sub = df[mask].copy()
-    if sub.empty:
+        sub = df.filter(pl.col("Codigo_Item") == cod_upper)
+
+    if sub.is_empty():
         return {}
+
+    # Ordenar por fecha desc y tomar el primer registro por DNI
+    sub = sub.sort("Fecha_Atencion", descending=True)
+
+    if cod_upper in ["99199.22", "99173", "86318.01"]:
+        # Tomar última fecha y concatenar valores
+        grp = (sub
+               .group_by("Numero_Documento_Paciente")
+               .agg([
+                   pl.col("Fecha_Atencion").first().alias("fecha"),
+                   pl.col("Valor_Lab").first().alias("vlab"),
+               ]))
+        resultado = {}
+        for row in grp.iter_rows(named=True):
+            dni = str(row["Numero_Documento_Paciente"])
+            fecha_str = row["fecha"].strftime("%d/%m/%Y") if row["fecha"] else ""
+            vlab = str(row["vlab"]).strip() if row["vlab"] else ""
+            resultado[dni] = f"{fecha_str} ({vlab})" if vlab and vlab not in ["", "nan", "None"] else fecha_str
+        return resultado
+
+    # Caso general: primera fila por DNI (ya ordenado desc)
+    grp = (sub
+           .group_by("Numero_Documento_Paciente")
+           .agg([
+               pl.col("Fecha_Atencion").first().alias("fecha"),
+               pl.col("Valor_Lab").first().alias("vlab"),
+           ]))
+
     resultado = {}
-    for dni, grupo in sub.groupby("Numero_Documento_Paciente"):
-        grupo = grupo.sort_values("Fecha_Atencion", ascending=False)
-        if cod_upper == "99401":
-            fechas_totales = df[df["Numero_Documento_Paciente"] == dni]["Fecha_Atencion"]
-            if not fechas_totales.empty:
-                fecha_paquete = fechas_totales.mode()[0]
-                match = grupo[grupo["Fecha_Atencion"] == fecha_paquete]
-                fila = match.iloc[0] if not match.empty else grupo.iloc[0]
-            else:
-                fila = grupo.iloc[0]
-        elif cod_upper in ["99199.22", "99173", "86318.01"]:
-            ultima_fecha = grupo["Fecha_Atencion"].iloc[0]
-            registros_dia = grupo[grupo["Fecha_Atencion"] == ultima_fecha]
-            fecha_str = ultima_fecha.strftime("%d/%m/%Y")
-            valores = [str(v).strip() for v in registros_dia["Valor_Lab"]
-                       if str(v).strip() not in ["", "nan", "None"]]
-            resultado[str(dni)] = f"{fecha_str} ({' / '.join(valores)})" if valores else fecha_str
-            continue
-        else:
-            fila = grupo.iloc[0]
-        fecha_str = fila["Fecha_Atencion"].strftime("%d/%m/%Y")
-        vlab = str(fila["Valor_Lab"]).strip()
-        resultado[str(dni)] = f"{fecha_str} ({vlab})" if vlab and vlab not in ["", "nan", "None"] else fecha_str
+    for row in grp.iter_rows(named=True):
+        dni = str(row["Numero_Documento_Paciente"])
+        fecha_str = row["fecha"].strftime("%d/%m/%Y") if row["fecha"] else ""
+        vlab = str(row["vlab"]).strip() if row["vlab"] else ""
+        resultado[dni] = f"{fecha_str} ({vlab})" if vlab and vlab not in ["", "nan", "None"] else fecha_str
     return resultado
 
-def procesar_datos(ipress_sel, mes_sel, dni_raw):
+_DF_CACHE = None
+
+def _get_df():
+    """Carga el parquet una sola vez, solo columnas necesarias, pre-filtrado por edad."""
+    global _DF_CACHE
+    if _DF_CACHE is not None:
+        return _DF_CACHE, None
     if not os.path.exists(PARQUET_PATH):
         return None, "Archivo reporte.parquet no encontrado"
     try:
-        df_raw = pl.read_parquet(PARQUET_PATH)
-        df_raw = df_raw.rename({col: col.strip() for col in df_raw.columns})
+        # Leer solo columnas necesarias para este módulo
+        cols_necesarias = ['Fecha_Atencion', 'Nombre_Establecimiento', 'Numero_Documento_Paciente', 'Apellido_Paterno_Paciente', 'Apellido_Materno_Paciente', 'Nombres_Paciente', 'Fecha_Nacimiento_Paciente', 'Anio_Actual_Paciente', 'Genero', 'Codigo_Item', 'Valor_Lab', 'Codigo_Diagnostico']
+        todas = pl.read_parquet(PARQUET_PATH, n_rows=1).columns
+        todas_limpias = {c: c.strip() for c in todas}
+        cols_leer = [c for c in todas if c.strip() in cols_necesarias]
+        df = pl.read_parquet(PARQUET_PATH, columns=cols_leer if cols_leer else None)
+        df = df.rename({col: col.strip() for col in df.columns})
+        df = df.filter((pl.col('Anio_Actual_Paciente') >= 12) & (pl.col('Anio_Actual_Paciente') <= 17))
+        # Pre-procesar columnas una sola vez
+        df = df.with_columns([
+            pl.col("Fecha_Atencion").cast(pl.Date),
+            pl.col("Fecha_Nacimiento_Paciente").cast(pl.Date),
+            pl.col("Fecha_Atencion").dt.month().alias("Mes_Num"),
+            pl.col("Fecha_Atencion").dt.strftime("%B").alias("Mes_Nombre"),
+            pl.col("Nombre_Establecimiento").str.strip_chars(),
+            pl.col("Codigo_Item").cast(pl.Utf8).str.strip_chars().str.to_uppercase(),
+            pl.col("Valor_Lab").cast(pl.Utf8).str.strip_chars().fill_null(""),
+        ]).with_columns(pl.col("Mes_Nombre").replace(MESES_ES))
+        _DF_CACHE = df
+        return _DF_CACHE, None
     except Exception as e:
         return None, str(e)
 
-    df = df_raw.with_columns([
-        pl.col("Fecha_Atencion").cast(pl.Date),
-        pl.col("Fecha_Nacimiento_Paciente").cast(pl.Date),
-        pl.col("Fecha_Atencion").dt.month().alias("Mes_Num"),
-        pl.col("Fecha_Atencion").dt.strftime("%B").alias("Mes_Nombre"),
-        pl.col("Nombre_Establecimiento").str.strip_chars(),
-        pl.col("Codigo_Item").cast(pl.Utf8).str.strip_chars().str.to_uppercase(),
-        pl.col("Valor_Lab").cast(pl.Utf8).str.strip_chars().fill_null(""),
-    ]).with_columns(pl.col("Mes_Nombre").replace(MESES_ES))
+def procesar_datos(ipress_sel, mes_sel, dni_raw):
+    df_raw, err = _get_df()
+    if err:
+        return None, err
 
-    df = df.filter((pl.col("Anio_Actual_Paciente") >= 12) & (pl.col("Anio_Actual_Paciente") <= 17))
+    df = df_raw  # columnas ya procesadas en cache
 
     lista_ipress = sorted([str(i).strip() for i in df["Nombre_Establecimiento"].unique().to_list()])
     lista_meses_df = df.select(["Mes_Num","Mes_Nombre"]).unique().sort("Mes_Num")
@@ -142,13 +173,10 @@ def procesar_datos(ipress_sel, mes_sel, dni_raw):
         "Fecha_Nacimiento_Paciente","Anio_Actual_Paciente","Genero",
     ]).unique(subset=["Numero_Documento_Paciente"]).sort("Fecha_Atencion", descending=True)
 
-    df_pd = df.to_pandas()
-    df_pd["Fecha_Atencion"] = pd.to_datetime(df_pd["Fecha_Atencion"])
-
     ids_pivot    = [c[1] for c in ITEMS_CONFIG]
     mapeo_visual = {c[1]: c[2] for c in ITEMS_CONFIG}
 
-    resultado_items = {id_col: extraer_item(df_pd, cod_item, id_col)
+    resultado_items = {id_col: extraer_item_polars(df, cod_item, id_col)
                        for cod_item, id_col, _ in ITEMS_CONFIG}
 
     df_final = df_info.to_pandas()
