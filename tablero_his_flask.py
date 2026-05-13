@@ -598,7 +598,7 @@ def tablero_his():
         u_pac    = dc["_dni"].n_unique()
         n_pac    = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="N")["_dni"].n_unique()
         cont_pac = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="C")["_dni"].n_unique()
-        pct_cap  = (n_pac/u_pac*100) if u_pac>0 else 0.0
+        pct_cap  = (n_pac/u_pac) if u_pac>0 else 0.0
 
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
@@ -831,7 +831,7 @@ def tablero_his():
                '<circle cx="12" cy="6" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>')
         + _kpi("Continuadores",f"{cont_pac:,}",
                '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>')
-        + _kpi("% Captaci\u00f3n",f"{pct_cap:.1f}%",
+        + _kpi("% Captaci\u00f3n",f"{pct_cap:.2f}",
                '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>')
         + '</div>'
 
