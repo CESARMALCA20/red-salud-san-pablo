@@ -662,8 +662,12 @@ def tablero_his():
     if not res_p.empty:
         if sel_ap:
             # Buscar la fila que coincide con el personal seleccionado
-            res_p_disp_list = res_p[(res_p.get("Apellido_Paterno_Personal","") == sel_ap) if "Apellido_Paterno_Personal" in res_p.columns else []]
-            res_p_disp = res_p[res_p["Apellido_Paterno_Personal"].astype(str)==sel_ap] if "Apellido_Paterno_Personal" in res_p.columns else res_p.head(1)
+            mask = pd.Series([True]*len(res_p), index=res_p.index)
+            if "Apellido_Paterno_Personal" in res_p.columns:
+                mask = mask & (res_p["Apellido_Paterno_Personal"].astype(str).str.strip() == sel_ap)
+            if "Nombres_Personal" in res_p.columns and sel_nom:
+                mask = mask & (res_p["Nombres_Personal"].astype(str).str.strip() == sel_nom)
+            res_p_disp = res_p[mask] if mask.any() else res_p.head(1)
         else:
             fila_tot = pd.DataFrame({"Apellido_Paterno_Personal":["TOTAL GENERAL"],
                                      "Nombres_Personal":[""],
