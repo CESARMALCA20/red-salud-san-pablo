@@ -342,22 +342,33 @@ document.addEventListener('DOMContentLoaded', function() {
   initDropdowns();
 });
 
-// Al aplicar filtros, si el mes cambió respecto a la URL actual, limpiar fechas
+// Al aplicar filtros: limpiar fechas si cambió el mes, limpiar personal si cambió IPRESS
 (function(){
   var form = document.getElementById('formFiltros');
   if(!form) return;
   var urlParams = new URLSearchParams(window.location.search);
-  var mesBefore = urlParams.getAll('mes').sort().join(',');
-  
+  var mesBefore    = urlParams.getAll('mes').sort().join(',');
+  var ipressBefore = urlParams.getAll('ipress').sort().join(',');
+
   form.addEventListener('submit', function(){
+    // Detectar cambio de mes
     var mesHidden = form.querySelectorAll('select[name="mes"] option:checked');
-    var mesAfter = Array.from(mesHidden).map(function(o){return o.value;}).sort().join(',');
+    var mesAfter  = Array.from(mesHidden).map(function(o){return o.value;}).sort().join(',');
     if(mesAfter !== mesBefore){
-      // El mes cambió — limpiar fechas para que el servidor calcule el nuevo rango
       var d = form.querySelector('input[name="desde"]');
       var h = form.querySelector('input[name="hasta"]');
       if(d) d.removeAttribute('name');
       if(h) h.removeAttribute('name');
+    }
+
+    // Detectar cambio de IPRESS — limpiar personal
+    var ipressHidden = form.querySelectorAll('select[name="ipress"] option:checked');
+    var ipressAfter  = Array.from(ipressHidden).map(function(o){return o.value;}).sort().join(',');
+    if(ipressAfter !== ipressBefore){
+      var p = form.querySelector('input[name="personal"]');
+      if(p) p.value = '';
+      var d = form.querySelector('input[name="dni"]');
+      if(d) d.value = '';
     }
   });
 })();
