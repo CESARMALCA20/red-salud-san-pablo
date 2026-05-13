@@ -173,9 +173,13 @@ def procesar_datos(ipress_sel, mes_sel, dni_raw):
         mask_h = df_final[col_genero].astype(str).str.upper().isin(["M","MASCULINO","HOMBRE","H"])
         mask_f = df_final[col_genero].astype(str).str.upper().isin(["F","FEMENINO","MUJER"])
         for c in col_solo_mujer:
-            if c in df_final.columns: df_final.loc[mask_h, c] = "NO APLICA"
+            if c in df_final.columns:
+                df_final[c] = df_final[c].astype(object)
+                df_final.loc[mask_h, c] = "NO APLICA"
         for c in col_solo_hombre:
-            if c in df_final.columns: df_final.loc[mask_f, c] = "NO APLICA"
+            if c in df_final.columns:
+                df_final[c] = df_final[c].astype(object)
+                df_final.loc[mask_f, c] = "NO APLICA"
 
     def _es_realizado(val):
         if val is None or (isinstance(val, float) and pd.isna(val)): return False
@@ -663,7 +667,7 @@ function descargarExcel() {{
     XLSX.utils.book_append_sheet(wb, ws, 'Nino');
 
     var fecha = new Date();
-    var nombreArchivo = 'Niño_' + fecha.getFullYear() + ('0'+(fecha.getMonth()+1)).slice(-2) + ('0'+fecha.getDate()).slice(-2) + '.xlsx';
+    var nombreArchivo = 'AdultoMayor_' + fecha.getFullYear() + ('0'+(fecha.getMonth()+1)).slice(-2) + ('0'+fecha.getDate()).slice(-2) + '.xlsx';
     XLSX.writeFile(wb, nombreArchivo);
 }}
 </script>
