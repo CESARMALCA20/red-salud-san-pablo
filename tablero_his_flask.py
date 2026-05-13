@@ -473,7 +473,21 @@ def tablero_his():
     global _DF_CACHE_HIS
     if _DF_CACHE_HIS is None:
         try:
-            _DF_CACHE_HIS = pl.read_parquet(ARCHIVO_PARQUET)
+            # Solo columnas necesarias para reducir memoria
+            COLS_HIS = [
+                "Mes", "Nombre_Establecimiento", "Codigo_Item", "Descripcion_Item",
+                "Edad_Reg", "Tipo_Diagnostico", "Descripcion_Financiador",
+                "Numero_Documento_Paciente", "Id_Condicion_Servicio",
+                "Apellido_Paterno_Personal", "Nombres_Personal",
+                "Nombres_Paciente", "Apellido_Paterno_Paciente",
+                "Fecha_Ultima_Regla",
+            ]
+            todas = pl.read_parquet(ARCHIVO_PARQUET, n_rows=1).columns
+            cols_leer = [c for c in todas if c.strip() in COLS_HIS]
+            _DF_CACHE_HIS = pl.read_parquet(
+                ARCHIVO_PARQUET,
+                columns=cols_leer if cols_leer else None
+            )
         except Exception as e:
             return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
     df_raw = _DF_CACHE_HIS
@@ -577,7 +591,12 @@ def tablero_his():
                 else:
                     df_f = df_tmp.drop("_fs")
 
-    # ── KPIs ──
+    # ── Limitar filas para gráficos (evitar OOM en Render gratuito) ──
+    total_atenciones = df_f.height
+    MAX_FILAS_GRAFICOS = 50_000
+    df_graf = df_f.sample(min(MAX_FILAS_GRAFICOS, df_f.height), seed=42) if df_f.height > MAX_FILAS_GRAFICOS else df_f
+
+    # ── KPIs (sobre datos completos) ──
     total_atenciones = df_f.height
     u_pac = n_pac = cont_pac = 0; pct_cap = 0.0
     if "Numero_Documento_Paciente" in df_f.columns and total_atenciones>0:
@@ -593,28 +612,28 @@ def tablero_his():
     # ── Gráficos — se generan como strings HTML completos ──
     html_c1=html_c2=html_c3=html_c4=""
 
-    if "Descripcion_Item" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Descripcion_Item").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(6).to_pandas())
+    if "Descripcion_Item" in df_graf.columns and total_atenciones>0:
+        r = (df_graf.group_by("Descripcion_Item").agg(pl.count().alias("N"))
+             .sort("N",descending=True).head(5).to_pandas())
         if not r.empty:
             html_c1 = hacer_radar(r["Descripcion_Item"].tolist(), r["N"].tolist())
 
-    if "Tipo_Diagnostico" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Tipo_Diagnostico").agg(pl.count().alias("N"))
+    if "Tipo_Diagnostico" in df_graf.columns and total_atenciones>0:
+        r = (df_graf.group_by("Tipo_Diagnostico").agg(pl.count().alias("N"))
              .sort("N",descending=True).to_pandas())
         if not r.empty:
             r["Tipo_Diagnostico"] = r["Tipo_Diagnostico"].map(
                 lambda x: MAPA_DIAG.get(str(x).strip().upper(), str(x).strip()))
             html_c2 = hacer_barras(r["Tipo_Diagnostico"].tolist(), r["N"].tolist(), DAZUL)
 
-    if "Nombre_Establecimiento" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
-             .sort("N",descending=True).head(6).to_pandas())
+    if "Nombre_Establecimiento" in df_graf.columns and total_atenciones>0:
+        r = (df_graf.group_by("Nombre_Establecimiento").agg(pl.count().alias("N"))
+             .sort("N",descending=True).head(5).to_pandas())
         if not r.empty:
             html_c3 = hacer_barras(r["Nombre_Establecimiento"].tolist(), r["N"].tolist(), DAZUL)
 
-    if "Descripcion_Financiador" in df_f.columns and total_atenciones>0:
-        r = (df_f.group_by("Descripcion_Financiador").agg(pl.count().alias("N"))
+    if "Descripcion_Financiador" in df_graf.columns and total_atenciones>0:
+        r = (df_graf.group_by("Descripcion_Financiador").agg(pl.count().alias("N"))
              .sort("N",descending=True).head(6)
              .filter(pl.col("Descripcion_Financiador").is_not_null()).to_pandas())
         r = r[r["Descripcion_Financiador"].astype(str).str.strip()!="None"]
