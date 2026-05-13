@@ -237,7 +237,14 @@ function initDropdowns() {
       if(search){search.value='';search.focus();}
       renderItems('');
     }
-    function closePanel(){trigger.classList.remove('open');panel.classList.remove('open');}
+    function closePanel(){
+      trigger.classList.remove('open');panel.classList.remove('open');
+      // Auto-submit si el dropdown tiene data-autosubmit
+      if(wrap.dataset.autosubmit){
+        var f = document.getElementById('formFiltros');
+        if(f) f.submit();
+      }
+    }
     trigger.addEventListener('click',function(e){e.stopPropagation();panel.classList.contains('open')?closePanel():openPanel();});
     panel.addEventListener('click',function(e){e.stopPropagation();});
     if(search){
@@ -287,7 +294,7 @@ ARROW_SVG = ('<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
              'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" '
              'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>')
 
-def build_dropdown(name, lista, sel, placeholder="Todos"):
+def build_dropdown(name, lista, sel, placeholder="Todos", autosubmit=False):
     sel_str = {str(s) for s in sel}
     opts_html = sel_opts(lista, sel)
     if sel_str:
@@ -298,8 +305,9 @@ def build_dropdown(name, lista, sel, placeholder="Todos"):
         txt = placeholder
         badge = '<span class="dd-badge" style="display:none">0</span>'
         ph_class = " placeholder"
+    auto_attr = ' data-autosubmit="1"' if autosubmit else ''
     return (
-        f'<div class="dd-wrap">'
+        f'<div class="dd-wrap"{auto_attr}>'
         f'<div class="dd-trigger" tabindex="0">'
         f'<span class="dd-trigger-text{ph_class}">{txt}</span>'
         f'{badge}'
@@ -799,9 +807,9 @@ def tablero_his():
 
         # Filtros
         '<div class="section-label">B\u00fasqueda Avanzada</div>'
-        '<div class="card"><form method="GET" action="/tablero-his">'
+        '<div class="card"><form method="GET" action="/tablero-his" id="formFiltros">'
         '<div class="filters-grid">'
-        '<div><div class="filter-label">Mes</div>' + build_dropdown("mes", meses_noms, p_mes, "Todos los meses") + '</div>'
+        '<div><div class="filter-label">Mes</div>' + build_dropdown("mes", meses_noms, p_mes, "Todos los meses", autosubmit=True) + '</div>'
         '<div><div class="filter-label">IPRESS</div>' + build_dropdown("ipress", ipress_opts, p_ipress, "Todas") + '</div>'
         '<div><div class="filter-label">C\u00f3digo \u00cdtem</div>' + build_dropdown("item", item_opts, p_item, "Todos") + '</div>'
         '<div><div class="filter-label">Edad Paciente</div>' + build_dropdown("edad", edad_opts, p_edad, "Todas") + '</div>'
