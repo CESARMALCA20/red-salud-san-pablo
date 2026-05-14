@@ -10,12 +10,25 @@ import polars as pl
 import pandas as pd
 import plotly.graph_objects as go
 import os, datetime, calendar as _cal, base64
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
+from sqlalchemy import create_engine
 
 tablero_his_bp = Blueprint("tablero_his", __name__)
 
-BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
-ARCHIVO_PARQUET = os.path.join(BASE_DIR, "data", "reporte.parquet")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ─── CONEXIÓN SUPABASE ────────────────────────────────────────────────────────
+_SUPA_PASSWORD = os.environ.get("SUPABASE_PASSWORD", "*Red9220@.*")
+_SUPA_URL = (
+    f"postgresql://postgres.exrktvebngrkhvjtkyhb:{quote_plus(_SUPA_PASSWORD)}"
+    f"@aws-1-us-east-2.pooler.supabase.com:6543/postgres"
+)
+_engine = create_engine(_SUPA_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
+
+def _cargar_datos():
+    """Carga la tabla atenciones desde Supabase como DataFrame Polars."""
+    df_pd = pd.read_sql("SELECT * FROM atenciones", _engine)
+    return pl.from_pandas(df_pd)
 
 MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
          7:"Julio",8:"Agosto",9:"Setiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
@@ -768,15 +781,11 @@ def tablero_his():
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
     try:
-        df_raw = pl.read_parquet(ARCHIVO_PARQUET)
+        df_raw = _cargar_datos()
     except Exception as e:
-        return f"<h3 style='padding:40px;font-family:monospace'>Error: {e}</h3>", 500
+        return f"<h3 style='padding:40px;font-family:monospace'>Error conectando a Supabase: {e}</h3>", 500
 
-    try:
-        mtime = os.path.getmtime(ARCHIVO_PARQUET)
-        fecha_excel = datetime.datetime.fromtimestamp(mtime).strftime("%d/%m/%Y %H:%M")
-    except:
-        fecha_excel = "N/D"
+    fecha_excel = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
     COL_FECHA = next(
         (c for c in df_raw.columns if "fecha" in c.lower() and "regla" not in c.lower()), None
