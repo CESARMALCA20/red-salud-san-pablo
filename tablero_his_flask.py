@@ -18,7 +18,7 @@ tablero_his_bp = Blueprint("tablero_his", __name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ─── CONEXIÓN SUPABASE ────────────────────────────────────────────────────────
-_SUPA_PASSWORD = os.environ.get("SUPABASE_PASSWORD", "*Red9220@.*")
+_SUPA_PASSWORD = os.environ.get("SUPABASE_PASSWORD", "TU_CONTRASEÑA_AQUI")
 _SUPA_URL = (
     f"postgresql://postgres.exrktvebngrkhvjtkyhb:{quote_plus(_SUPA_PASSWORD)}"
     f"@aws-1-us-east-2.pooler.supabase.com:6543/postgres"
@@ -136,10 +136,11 @@ def _cargar_kpis(where, params):
 
 def _cargar_grafico(col, where, params, limit=6):
     """Top N para gráficos — calculado en SQL."""
+    null_filter = f'AND "{col}" IS NOT NULL' if where else f'WHERE "{col}" IS NOT NULL'
     sql = f"""
         SELECT CAST("{col}" AS TEXT) as lbl, COUNT(*) as n
         FROM atenciones {where}
-        WHERE "{col}" IS NOT NULL
+        {null_filter}
         GROUP BY "{col}"
         ORDER BY n DESC
         LIMIT {limit}
