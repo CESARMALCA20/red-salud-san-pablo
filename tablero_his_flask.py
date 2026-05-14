@@ -25,6 +25,44 @@ _SUPA_URL = (
 )
 _engine = create_engine(_SUPA_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
 
+# ─── CACHÉ DE OPCIONES (se carga una sola vez al arrancar) ───────────────────
+_cache_opciones = {}
+
+def _cargar_opciones():
+    """Carga las opciones de filtros una sola vez y las guarda en memoria."""
+    global _cache_opciones
+    if _cache_opciones:
+        return _cache_opciones
+    try:
+        from sqlalchemy import text
+        with _engine.connect() as con:
+            ipress = sorted([r[0] for r in con.execute(text(
+                'SELECT DISTINCT "Nombre_Establecimiento" FROM atenciones WHERE "Nombre_Establecimiento" IS NOT NULL'
+            )).fetchall()])
+            items = sorted([r[0] for r in con.execute(text(
+                'SELECT DISTINCT "Codigo_Item" FROM atenciones WHERE "Codigo_Item" IS NOT NULL'
+            )).fetchall()])
+            edades = sorted([str(r[0]) for r in con.execute(text(
+                'SELECT DISTINCT "Edad_Reg" FROM atenciones WHERE "Edad_Reg" IS NOT NULL'
+            )).fetchall()])
+            meses = sorted([r[0] for r in con.execute(text(
+                'SELECT DISTINCT "Mes" FROM atenciones WHERE "Mes" IS NOT NULL'
+            )).fetchall()])
+        _cache_opciones = {
+            "ipress": ipress,
+            "items":  items,
+            "edades": edades,
+            "meses":  meses,
+        }
+        print(f"✅ Caché de opciones cargado — {len(ipress)} IPRESS, {len(items)} items")
+    except Exception as e:
+        print(f"⚠️ Error cargando caché: {e}")
+    return _cache_opciones
+
+# Precargar al importar el módulo (en segundo plano)
+import threading
+threading.Thread(target=_cargar_opciones, daemon=True).start()
+
 def _cargar_datos(p_ipress=None, p_item=None, p_edad=None,
                   p_mes=None, p_desde=None, p_hasta=None):
     """Carga solo los datos necesarios desde Supabase según los filtros activos."""
@@ -816,16 +854,15 @@ def tablero_his():
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
     try:
-        # Opciones para los filtros (consultas ligeras)
-        from sqlalchemy import text
-        with _engine.connect() as con:
-            ipress_opts = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Nombre_Establecimiento" FROM atenciones WHERE "Nombre_Establecimiento" IS NOT NULL')).fetchall()])
-            item_opts   = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Codigo_Item" FROM atenciones WHERE "Codigo_Item" IS NOT NULL')).fetchall()])
-            edad_opts   = sorted([str(r[0]) for r in con.execute(text('SELECT DISTINCT "Edad_Reg" FROM atenciones WHERE "Edad_Reg" IS NOT NULL')).fetchall()])
-            meses_nums  = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Mes" FROM atenciones WHERE "Mes" IS NOT NULL')).fetchall()])
-        meses_noms = [MESES.get(int(m), str(m)) for m in meses_nums]
+        # Opciones desde caché (no va a Supabase cada vez)
+        opts = _cargar_opciones()
+        ipress_opts = opts.get("ipress", [])
+        item_opts   = opts.get("items",  [])
+        edad_opts   = opts.get("edades", [])
+        meses_nums  = opts.get("meses",  [])
+        meses_noms  = [MESES.get(int(m), str(m)) for m in meses_nums]
 
-        # Datos filtrados
+        # Datos filtrados (única consulta a Supabase)
         df_raw = _cargar_datos(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta)
     except Exception as e:
         return f"<h3 style='padding:40px;font-family:monospace'>Error conectando a Supabase: {e}</h3>", 500
