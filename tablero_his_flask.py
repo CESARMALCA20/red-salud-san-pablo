@@ -1117,7 +1117,7 @@ def tablero_his():
         f'<input type="hidden" name="personal" value="{sel_ap}||{sel_nom}">'
         f'<input type="hidden" name="dni" value="{p_dni}">'
         '<div style="display:flex;align-items:center;gap:16px;margin-top:14px;">'
-        '<button type="submit" class="btn">Aplicar filtros</button>'
+        '<button type="submit" class="btn" style="margin-top:0;">Aplicar filtros</button>'
         '<a href="/tablero-his" style="display:inline-flex;align-items:center;gap:7px;'
         'font-size:12px;font-weight:600;color:#94a3b8;text-decoration:none;'
         'border:1.5px solid #2a3444;border-radius:10px;padding:10px 18px;'
