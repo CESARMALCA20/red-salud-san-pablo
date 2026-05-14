@@ -376,11 +376,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 def _logo_b64():
-    for ext in ["png","jpg","jpeg"]:
-        p = os.path.join(BASE_DIR, f"logo.{ext}")
-        if os.path.exists(p):
-            with open(p,"rb") as f:
-                return base64.b64encode(f.read()).decode()
+    for name in ["logo","LOGO","Logo"]:
+        for ext in ["png","jpg","jpeg","PNG","JPG","JPEG"]:
+            p = os.path.join(BASE_DIR, f"{name}.{ext}")
+            if os.path.exists(p):
+                with open(p,"rb") as f:
+                    return base64.b64encode(f.read()).decode()
     return ""
 
 def abreviar(t, n=22):
@@ -834,8 +835,17 @@ def tablero_his():
 
     # ── Construir piezas HTML (sin f-string para las que contienen Plotly) ──
     logo_b64  = _logo_b64()
-    logo_tag  = (f'<img class="topbar-logo" src="data:image/png;base64,{logo_b64}">'
-                 if logo_b64 else "")
+    if logo_b64:
+        logo_tag = f'<img class="topbar-logo" src="data:image/png;base64,{logo_b64}">'
+    else:
+        # Logo SVG embebido — cruz médica con fondo blanco, siempre visible
+        logo_tag = (
+            '<div class="topbar-logo" style="display:flex;align-items:center;justify-content:center;background:#fff;border-radius:8px;">'
+            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+            '<rect x="9" y="2" width="6" height="20" rx="2" fill="#1C398E"/>'
+            '<rect x="2" y="9" width="20" height="6" rx="2" fill="#1C398E"/>'
+            '</svg></div>'
+        )
 
     # Calendario HTML
     cal_disabled = "" if calendario_activo else "disabled"
