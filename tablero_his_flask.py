@@ -25,9 +25,44 @@ _SUPA_URL = (
 )
 _engine = create_engine(_SUPA_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
 
-def _cargar_datos():
-    """Carga la tabla atenciones desde Supabase como DataFrame Polars."""
-    df_pd = pd.read_sql("SELECT * FROM atenciones", _engine)
+def _cargar_datos(p_ipress=None, p_item=None, p_edad=None,
+                  p_mes=None, p_desde=None, p_hasta=None):
+    """Carga solo los datos necesarios desde Supabase según los filtros activos."""
+    where = []
+    params = {}
+
+    if p_ipress:
+        where.append('"Nombre_Establecimiento" = :ipress')
+        params["ipress"] = p_ipress[0]
+    if p_item:
+        placeholders = ",".join([f":item{i}" for i in range(len(p_item))])
+        where.append(f'"Codigo_Item" IN ({placeholders})')
+        for i, v in enumerate(p_item): params[f"item{i}"] = v
+    if p_edad:
+        placeholders = ",".join([f":edad{i}" for i in range(len(p_edad))])
+        where.append(f'CAST("Edad_Reg" AS TEXT) IN ({placeholders})')
+        for i, v in enumerate(p_edad): params[f"edad{i}"] = v
+    if p_mes:
+        try:
+            nums = [str(MESES_INV[m]) for m in p_mes if m in MESES_INV]
+            if nums:
+                placeholders = ",".join([f":mes{i}" for i in range(len(nums))])
+                where.append(f'CAST("Mes" AS TEXT) IN ({placeholders})')
+                for i, v in enumerate(nums): params[f"mes{i}"] = v
+        except: pass
+    if p_desde:
+        where.append('"Fecha_Atencion" >= :desde')
+        params["desde"] = p_desde
+    if p_hasta:
+        where.append('"Fecha_Atencion" <= :hasta')
+        params["hasta"] = p_hasta
+
+    sql = 'SELECT * FROM atenciones'
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+
+    from sqlalchemy import text
+    df_pd = pd.read_sql(text(sql), _engine, params=params)
     return pl.from_pandas(df_pd)
 
 MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
@@ -781,7 +816,17 @@ def tablero_his():
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
     try:
-        df_raw = _cargar_datos()
+        # Opciones para los filtros (consultas ligeras)
+        from sqlalchemy import text
+        with _engine.connect() as con:
+            ipress_opts = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Nombre_Establecimiento" FROM atenciones WHERE "Nombre_Establecimiento" IS NOT NULL')).fetchall()])
+            item_opts   = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Codigo_Item" FROM atenciones WHERE "Codigo_Item" IS NOT NULL')).fetchall()])
+            edad_opts   = sorted([str(r[0]) for r in con.execute(text('SELECT DISTINCT "Edad_Reg" FROM atenciones WHERE "Edad_Reg" IS NOT NULL')).fetchall()])
+            meses_nums  = sorted([r[0] for r in con.execute(text('SELECT DISTINCT "Mes" FROM atenciones WHERE "Mes" IS NOT NULL')).fetchall()])
+        meses_noms = [MESES.get(int(m), str(m)) for m in meses_nums]
+
+        # Datos filtrados
+        df_raw = _cargar_datos(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta)
     except Exception as e:
         return f"<h3 style='padding:40px;font-family:monospace'>Error conectando a Supabase: {e}</h3>", 500
 
@@ -797,36 +842,8 @@ def tablero_his():
             if anios: anio_datos = anios[0]
     except: pass
 
-    # Opciones
-    meses_nums  = sorted(df_raw["Mes"].unique().drop_nulls().to_list())
-    meses_noms  = [MESES.get(int(m), str(m)) for m in meses_nums]
-    ipress_opts = sorted(df_raw["Nombre_Establecimiento"].unique().drop_nulls().to_list())
-    item_opts   = sorted(df_raw["Codigo_Item"].unique().drop_nulls().to_list())
-    edad_opts   = sorted([str(x) for x in df_raw["Edad_Reg"].unique().drop_nulls().to_list()])
-
-    # ── Filtros ──
+    # ── Filtros en memoria (df_raw ya viene pre-filtrado desde SQL) ──
     df_f = df_raw.clone()
-    if p_ipress: df_f = df_f.filter(pl.col("Nombre_Establecimiento").is_in(p_ipress))
-    if p_item:   df_f = df_f.filter(pl.col("Codigo_Item").is_in(p_item))
-    if p_edad:   df_f = df_f.filter(pl.col("Edad_Reg").cast(pl.Utf8).is_in(p_edad))
-
-    if p_mes:
-        mapa_num = {
-            "Enero":["1","01","1.0"],"Febrero":["2","02","2.0"],
-            "Marzo":["3","03","3.0"],"Abril":["4","04","4.0"],
-            "Mayo":["5","05","5.0"],"Junio":["6","06","6.0"],
-            "Julio":["7","07","7.0"],"Agosto":["8","08","8.0"],
-            "Setiembre":["9","09","9.0"],"Octubre":["10","10.0"],
-            "Noviembre":["11","11.0"],"Diciembre":["12","12.0"]
-        }
-        lista = []
-        for m in p_mes:
-            lista.append(m)
-            lista.extend(mapa_num.get(m,[]))
-        df_f = (df_f
-                .with_columns(pl.col("Mes").cast(pl.Utf8).str.strip_chars().alias("_m"))
-                .filter(pl.col("_m").is_in(lista))
-                .drop("_m"))
 
     # Calendario
     calendario_activo = len(p_mes) == 1
