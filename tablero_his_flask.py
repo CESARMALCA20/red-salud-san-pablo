@@ -22,141 +22,303 @@ MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
 MESES_INV = {v:k for k,v in MESES.items()}
 MAPA_DIAG = {"D":"Definitivo","P":"Presuntivo","R":"Repetitivo",
              "S":"Sintomático","E":"Enfermedad crónica"}
-DAZUL = ["#1C398E","#1e40af","#1d4ed8","#2563eb","#3b82f6","#60a5fa"]
-DGRIS = ["#334155","#475569","#64748b","#94a3b8","#cbd5e1","#e2e8f0"]
+DAZUL = ["#3b82f6","#2563eb","#06b6d4","#0ea5e9","#818cf8","#38bdf8"]
+DGRIS = ["#64748b","#475569","#94a3b8","#334155","#cbd5e1","#1e293b"]
 
 # ─── CSS / HTML ESTÁTICO ─────────────────────────────────────────────────────
 CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ── Variables ── */
+:root{
+  --bg:       #0d1117;
+  --bg2:      #161b22;
+  --bg3:      #1c2330;
+  --border:   #2a3444;
+  --border2:  #334155;
+  --accent:   #3b82f6;
+  --accent2:  #1d4ed8;
+  --cyan:     #06b6d4;
+  --gold:     #f59e0b;
+  --text:     #e2e8f0;
+  --text2:    #94a3b8;
+  --text3:    #64748b;
+  --success:  #10b981;
+  --danger:   #ef4444;
+}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-body{background:#f4f6fb;font-family:'Inter',sans-serif;}
-.topbar{background:#1C398E;display:flex;align-items:center;justify-content:space-between;
-  padding:0 28px;height:56px;position:sticky;top:0;z-index:100;
-  box-shadow:0 2px 12px rgba(28,57,142,0.18);}
+body{background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);}
+
+/* ── Topbar ── */
+.topbar{
+  background:linear-gradient(90deg,#0d1f4e 0%,#112266 50%,#0d1f4e 100%);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;height:62px;position:sticky;top:0;z-index:100;
+  border-bottom:1px solid rgba(59,130,246,0.25);
+  box-shadow:0 4px 24px rgba(0,0,0,0.5);
+}
 .topbar-left{display:flex;align-items:center;gap:14px;}
-.topbar-logo{height:36px;width:36px;border-radius:8px;object-fit:contain;background:#fff;padding:3px;}
-.topbar-title{font-size:13px;font-weight:800;color:#fff;letter-spacing:0.06em;text-transform:uppercase;line-height:1.2;}
-.topbar-sub{font-size:10px;color:rgba(255,255,255,0.65);font-weight:500;letter-spacing:0.04em;}
-.topbar-badge{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);
-  border-radius:20px;padding:4px 14px;font-size:11px;color:rgba(255,255,255,0.85);font-weight:600;}
+.topbar-logo{height:38px;width:38px;border-radius:10px;object-fit:contain;
+  background:#fff;padding:3px;box-shadow:0 0 0 2px rgba(59,130,246,0.4);}
+.topbar-title{font-size:13px;font-weight:800;color:#fff;letter-spacing:0.07em;
+  text-transform:uppercase;line-height:1.2;}
+.topbar-sub{font-size:10px;color:rgba(255,255,255,0.5);font-weight:500;letter-spacing:0.05em;margin-top:2px;}
+.topbar-badge{
+  background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.35);
+  border-radius:20px;padding:5px 16px;font-size:11px;
+  color:rgba(255,255,255,0.8);font-weight:600;
+  box-shadow:0 0 10px rgba(59,130,246,0.1);
+}
+
+/* ── Layout ── */
 .container{padding:1.5rem 2rem;}
-.section-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;
-  letter-spacing:0.15em;margin:24px 0 14px;display:flex;align-items:center;gap:10px;}
-.section-label::after{content:'';flex:1;height:1px;background:#e2e8f0;}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;
-  padding:18px 20px;box-shadow:0 1px 6px rgba(0,0,0,0.05);margin-bottom:20px;}
+
+/* ── Section labels ── */
+.section-label{
+  font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;
+  letter-spacing:0.2em;margin:28px 0 14px;display:flex;align-items:center;gap:12px;
+}
+.section-label::after{content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,rgba(59,130,246,0.3),transparent);}
+
+/* ── Cards ── */
+.card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  padding:20px 22px;box-shadow:0 4px 24px rgba(0,0,0,0.3);margin-bottom:20px;
+}
+
+/* ── Grids ── */
 .filters-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
-.filters-grid-cal{display:grid;grid-template-columns:1fr 1fr 2fr;gap:16px;margin-top:14px;}
-.filter-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;
-  letter-spacing:0.1em;margin-bottom:5px;}
-.filter-label.active{color:#1C398E;}
-/* selects normales (tabla personal) */
-select:not([multiple]){width:100%;border:1.5px solid #c5d3ea;border-radius:8px;
-  padding:9px 10px;font-family:inherit;font-size:13px;color:#334155;
-  background:#fff;outline:none;}
-select:focus{border-color:#1C398E;box-shadow:0 0 0 3px rgba(28,57,142,0.1);}
-/* multiselect oculto - usado solo para enviar valores */
+.filters-grid-cal{display:grid;grid-template-columns:1fr 1fr 2fr;gap:16px;margin-top:16px;}
+
+/* ── Filter labels ── */
+.filter-label{font-size:10px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:0.12em;margin-bottom:6px;}
+.filter-label.active{color:var(--cyan);}
+
+/* ── Selects ── */
+select:not([multiple]){
+  width:100%;border:1.5px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  background:var(--bg3);outline:none;
+  transition:border-color .18s,box-shadow .18s;
+  appearance:auto;
+}
+select:not([multiple]):hover{border-color:var(--border2);}
+select:not([multiple]):focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+}
+select option{background:var(--bg3);color:var(--text);}
 select[multiple].hidden-select{display:none;}
 
 /* ── Dropdown personalizado ── */
 .dd-wrap{position:relative;width:100%;}
 .dd-trigger{
-  width:100%;border:1.5px solid #c5d3ea;border-radius:8px;
-  padding:9px 12px 9px 12px;font-family:inherit;font-size:13px;color:#334155;
-  background:#fff;cursor:pointer;display:flex;align-items:center;
+  width:100%;border:1.5px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  background:var(--bg3);cursor:pointer;display:flex;align-items:center;
   justify-content:space-between;gap:8px;user-select:none;
   transition:border-color .18s,box-shadow .18s;
 }
-.dd-trigger:hover{border-color:#a0b8d8;}
-.dd-trigger.open{border-color:#1C398E;box-shadow:0 0 0 3px rgba(28,57,142,0.1);}
+.dd-trigger:hover{border-color:var(--border2);}
+.dd-trigger.open{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+}
 .dd-trigger-text{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-.dd-trigger-text.placeholder{color:#94a3b8;}
-.dd-badge{background:#1C398E;color:#fff;border-radius:10px;
-  font-size:10px;font-weight:700;padding:1px 7px;flex-shrink:0;}
-.dd-arrow{flex-shrink:0;transition:transform .2s;}
+.dd-trigger-text.placeholder{color:var(--text3);}
+.dd-badge{
+  background:var(--accent);color:#fff;border-radius:10px;
+  font-size:10px;font-weight:700;padding:2px 8px;flex-shrink:0;
+}
+.dd-arrow{flex-shrink:0;transition:transform .2s;color:var(--text3);}
 .dd-trigger.open .dd-arrow{transform:rotate(180deg);}
 .dd-panel{
-  display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
-  background:#fff;border:1.5px solid #c5d3ea;border-radius:10px;
-  box-shadow:0 8px 24px rgba(28,57,142,0.13);z-index:200;
+  display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;
+  background:var(--bg2);border:1.5px solid var(--border);border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,0.5);z-index:200;
   max-height:240px;overflow:hidden;flex-direction:column;
 }
 .dd-panel.open{display:flex;}
-.dd-search{
-  padding:8px 10px;border-bottom:1px solid #f1f5f9;
-}
+.dd-search{padding:8px 10px;border-bottom:1px solid var(--border);}
 .dd-search input{
-  width:100%;border:1.5px solid #e2e8f0;border-radius:6px;
-  padding:6px 10px;font-size:12px;font-family:inherit;color:#334155;outline:none;
+  width:100%;border:1.5px solid var(--border);border-radius:8px;
+  padding:7px 10px;font-size:12px;font-family:inherit;
+  color:var(--text);background:var(--bg3);outline:none;
 }
-.dd-search input:focus{border-color:#1C398E;}
+.dd-search input:focus{border-color:var(--accent);}
+.dd-search input::placeholder{color:var(--text3);}
 .dd-list{overflow-y:auto;max-height:180px;padding:4px 0;}
 .dd-item{
-  display:flex;align-items:center;gap:10px;padding:7px 12px;
-  cursor:pointer;font-size:13px;color:#334155;transition:background .12s;
+  display:flex;align-items:center;gap:10px;padding:8px 14px;
+  cursor:pointer;font-size:13px;color:var(--text);transition:background .12s;
 }
-.dd-item:hover{background:#f0f4ff;}
-.dd-item.selected{background:#e8eef8;color:#1C398E;font-weight:600;}
+.dd-item:hover{background:rgba(59,130,246,0.1);}
+.dd-item.selected{background:rgba(59,130,246,0.15);color:var(--accent);font-weight:600;}
 .dd-item input[type=checkbox]{
-  width:15px;height:15px;accent-color:#1C398E;flex-shrink:0;cursor:pointer;
+  width:15px;height:15px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;
 }
-.dd-empty{padding:16px;text-align:center;color:#94a3b8;font-size:12px;}
+.dd-empty{padding:16px;text-align:center;color:var(--text3);font-size:12px;}
 .dd-footer{
-  padding:6px 10px;border-top:1px solid #f1f5f9;
+  padding:6px 10px;border-top:1px solid var(--border);
   display:flex;justify-content:flex-end;gap:8px;
 }
 .dd-btn-clear{
-  font-size:11px;color:#94a3b8;cursor:pointer;padding:3px 8px;border-radius:5px;
-  border:1px solid #e2e8f0;background:#f8fafc;transition:all .15s;
+  font-size:11px;color:var(--text3);cursor:pointer;padding:3px 8px;border-radius:6px;
+  border:1px solid var(--border);background:var(--bg3);transition:all .15s;
 }
-.dd-btn-clear:hover{color:#dc2626;border-color:#fca5a5;background:#fff5f5;}
+.dd-btn-clear:hover{color:var(--danger);border-color:var(--danger);background:rgba(239,68,68,0.08);}
 
-input[type=date]{width:100%;border:1.5px solid #c5d3ea;border-radius:8px;
-  padding:9px 12px;font-family:inherit;font-size:13px;color:#334155;
-  background:#fff;outline:none;}
-input[type=date]:disabled{background:#f8fafc;color:#cbd5e1;cursor:not-allowed;border-color:#e2e8f0;}
-input[type=date]:focus{border-color:#1C398E;}
-.cal-msg{background:#f5f8ff;border:1.5px dashed #94a3b8;border-radius:10px;
-  padding:11px 18px;font-size:12px;color:#4a6090;font-weight:500;display:flex;align-items:center;}
-.btn{background:#1C398E;color:#fff;border:none;border-radius:8px;
-  padding:10px 24px;font-size:13px;font-weight:700;cursor:pointer;
-  letter-spacing:0.04em;transition:background 0.18s;margin-top:14px;}
-.btn:hover{background:#16307a;}
-.btn-sm{margin-top:0;padding:9px 18px;}
+/* ── Inputs ── */
+input[type=date]{
+  width:100%;border:1.5px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  background:var(--bg3);outline:none;
+  transition:border-color .18s,box-shadow .18s;
+  color-scheme:dark;
+}
+input[type=date]:disabled{
+  background:var(--bg);color:var(--text3);
+  cursor:not-allowed;border-color:var(--border);opacity:0.5;
+}
+input[type=date]:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+}
+input[type=text]{
+  border:1.5px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  background:var(--bg3);outline:none;width:100%;
+  transition:border-color .18s,box-shadow .18s;
+}
+input[type=text]::placeholder{color:var(--text3);}
+input[type=text]:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+}
+
+/* ── Cal msg ── */
+.cal-msg{
+  background:rgba(6,182,212,0.07);
+  border:1.5px dashed rgba(6,182,212,0.35);
+  border-radius:10px;padding:12px 18px;font-size:12px;
+  color:var(--cyan);font-weight:500;display:flex;align-items:center;
+}
+
+/* ── Buttons ── */
+.btn{
+  background:linear-gradient(135deg,var(--accent2),var(--accent));
+  color:#fff;border:none;border-radius:10px;
+  padding:11px 26px;font-size:13px;font-weight:700;cursor:pointer;
+  letter-spacing:0.05em;transition:all 0.2s;margin-top:14px;
+  box-shadow:0 4px 14px rgba(59,130,246,0.3);
+}
+.btn:hover{
+  background:linear-gradient(135deg,#1a3fc0,var(--accent2));
+  box-shadow:0 6px 20px rgba(59,130,246,0.4);
+  transform:translateY(-1px);
+}
+.btn-sm{margin-top:0;padding:10px 18px;}
+
+/* ── KPI grid ── */
 .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px;}
-.kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;
-  padding:16px 18px;box-shadow:0 1px 6px rgba(0,0,0,0.05);position:relative;}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;
-  height:3px;background:#1C398E;border-radius:12px 12px 0 0;}
-.kpi-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
-.kpi-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
-  justify-content:center;background:#e8eef8;}
-.kpi-dot{width:6px;height:6px;border-radius:50%;background:#1C398E;margin-top:4px;}
-.kpi-value{font-size:28px;font-weight:800;color:#0f172a;line-height:1;
-  letter-spacing:-1px;margin-bottom:5px;}
-.kpi-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.12em;}
-.charts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px;}
-.chart-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;
-  overflow:hidden;box-shadow:0 1px 8px rgba(0,0,0,0.06);}
-.chart-title{padding:12px 14px 10px;background:#fff;border-bottom:1px solid #eef2fb;
-  font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;
-  letter-spacing:0.1em;display:flex;align-items:center;gap:8px;}
-.chart-accent{display:inline-block;width:3px;height:13px;background:#1C398E;border-radius:2px;}
-.chart-body{background:#f8fafc;padding:4px 6px 6px;}
-.tables-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;}
-.table-title{font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;
-  letter-spacing:0.1em;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.table-accent{display:inline-block;width:3px;height:13px;background:#1C398E;
-  border-radius:2px;flex-shrink:0;}
-.pac-badge{display:inline-flex;align-items:center;border-radius:20px;
-  padding:1px 10px;font-size:11px;font-weight:700;}
-.table-filters{display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap;}
-input[type=text]{border:1.5px solid #c5d3ea;border-radius:8px;
-  padding:9px 12px;font-family:inherit;font-size:13px;color:#334155;
-  background:#fff;outline:none;width:100%;}
-input[type=text]:focus{border-color:#1C398E;}
+.kpi-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:18px 20px;position:relative;overflow:hidden;
+  transition:transform .2s,box-shadow .2s;
+  box-shadow:0 4px 20px rgba(0,0,0,0.25);
+}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.35);}
+.kpi-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--accent),var(--cyan));
+  border-radius:14px 14px 0 0;
+}
+.kpi-card::after{
+  content:'';position:absolute;bottom:0;right:0;
+  width:80px;height:80px;border-radius:50%;
+  background:radial-gradient(circle,rgba(59,130,246,0.06),transparent);
+  pointer-events:none;
+}
+.kpi-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+.kpi-icon{
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,rgba(59,130,246,0.2),rgba(6,182,212,0.1));
+  border:1px solid rgba(59,130,246,0.2);
+}
+.kpi-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--success);margin-top:4px;
+  box-shadow:0 0 6px var(--success);
+}
+.kpi-value{
+  font-size:30px;font-weight:900;color:#fff;line-height:1;
+  letter-spacing:-1.5px;margin-bottom:6px;
+}
+.kpi-label{
+  font-size:10px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:0.14em;
+}
 
-.footer{margin-top:40px;padding:20px 0;border-top:1px solid #f1f5f9;
-  text-align:center;font-size:11px;color:#94a3b8;}
+/* ── Charts ── */
+.charts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px;}
+.chart-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.25);
+  transition:transform .2s,box-shadow .2s;
+}
+.chart-card:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.35);}
+.chart-title{
+  padding:13px 16px 11px;
+  background:linear-gradient(90deg,rgba(59,130,246,0.06),transparent);
+  border-bottom:1px solid var(--border);
+  font-size:11px;font-weight:700;color:var(--text2);
+  text-transform:uppercase;letter-spacing:0.12em;
+  display:flex;align-items:center;gap:8px;
+}
+.chart-accent{
+  display:inline-block;width:3px;height:14px;
+  background:linear-gradient(180deg,var(--accent),var(--cyan));
+  border-radius:2px;
+}
+.chart-body{background:var(--bg);padding:4px 6px 6px;}
+
+/* ── Tables ── */
+.tables-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;}
+.table-title{
+  font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;
+  letter-spacing:0.1em;margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.table-accent{
+  display:inline-block;width:3px;height:14px;
+  background:linear-gradient(180deg,var(--accent),var(--cyan));
+  border-radius:2px;flex-shrink:0;
+}
+.pac-badge{
+  display:inline-flex;align-items:center;border-radius:20px;
+  padding:2px 11px;font-size:11px;font-weight:700;
+}
+.table-filters{display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap;}
+
+/* ── Footer ── */
+.footer{
+  margin-top:48px;padding:20px 0;
+  border-top:1px solid var(--border);
+  text-align:center;font-size:11px;color:var(--text3);
+  letter-spacing:0.04em;
+}
+
+/* ── Scrollbar dark ── */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+
+/* ── Responsive ── */
 @media(max-width:900px){
   .filters-grid{grid-template-columns:1fr 1fr;}
   .kpi-grid{grid-template-columns:repeat(3,1fr);}
@@ -453,23 +615,24 @@ def tabla_html(df_pd, num_cols=None, fecha_cols=None):
         ths += f'<th style="text-align:{al};">{c}</th>'
     rows = ""
     for i, (_, row) in enumerate(df_pd.iterrows(), 1):
-        celdas = f'<td style="text-align:center;color:#94a3b8;font-size:11px;">{i}</td>'
+        bg = "background:#1c2330;" if i % 2 == 0 else "background:#161b22;"
+        celdas = f'<td style="text-align:center;color:#475569;font-size:11px;{bg}">{i}</td>'
         for col in df_pd.columns:
             val = row[col]; val = "" if pd.isna(val) else str(val)
             if col in num_cols:
-                st = "text-align:right;color:#1C398E;font-weight:700;"
+                st = f"text-align:right;color:#60a5fa;font-weight:700;{bg}"
             elif col in fecha_cols:
-                st = "color:#94a3b8;font-size:12px;"
+                st = f"color:#64748b;font-size:12px;{bg}"
             else:
-                st = ""
+                st = f"color:#cbd5e1;{bg}"
             celdas += f'<td style="{st}">{val}</td>'
         rows += f"<tr>{celdas}</tr>"
     return (
         '<div style="overflow-x:auto;max-height:400px;overflow-y:auto;'
-        'border-radius:10px;border:1px solid #e2e8f0;">'
+        'border-radius:12px;border:1px solid #2a3444;">'
         '<table style="width:100%;border-collapse:collapse;font-family:Inter,sans-serif;font-size:13px;">'
         f'<thead style="position:sticky;top:0;">'
-        f'<tr style="background:#1C398E;color:#fff;">{ths}</tr></thead>'
+        f'<tr style="background:linear-gradient(90deg,#1d2d50,#1a2744);color:#e2e8f0;">{ths}</tr></thead>'
         f'<tbody>{rows}</tbody></table></div>'
     )
 
@@ -520,22 +683,22 @@ def hacer_radar(cats_raw, vals):
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter,sans-serif", color="#334155", size=10),
+        font=dict(family="Inter,sans-serif", color="#94a3b8", size=10),
         height=300, margin=dict(l=65,r=65,t=65,b=65), showlegend=False,
         polar=dict(
-            bgcolor="rgba(248,250,252,0.6)",
+            bgcolor="rgba(28,43,64,0.4)",
             domain=dict(x=[0.0,1.0],y=[0.0,1.0]),
             angularaxis=dict(
-                tickfont=dict(size=8.5, color="#475569", family="Inter"),
-                linecolor="rgba(28,57,142,0.15)",
-                gridcolor="rgba(28,57,142,0.08)",
+                tickfont=dict(size=8.5, color="#64748b", family="Inter"),
+                linecolor="rgba(59,130,246,0.15)",
+                gridcolor="rgba(59,130,246,0.08)",
                 direction="clockwise",
             ),
             radialaxis=dict(
                 visible=True, range=[0, 120],
                 showticklabels=False,
-                gridcolor="rgba(28,57,142,0.08)",
-                linecolor="rgba(28,57,142,0.10)",
+                gridcolor="rgba(59,130,246,0.08)",
+                linecolor="rgba(59,130,246,0.10)",
                 layer="below traces",
             )
         )
@@ -552,7 +715,7 @@ def hacer_barras(etiquetas_raw, vals, colores):
         x=vals, y=ets, orientation='h',
         marker=dict(color=clrs,line=dict(width=0)),
         text=[f"{v:,}" for v in vals], textposition="outside",
-        textfont=dict(color="#1e2f55",size=10,family="Inter"),
+        textfont=dict(color="#94a3b8",size=10,family="Inter"),
         customdata=list(zip(etiquetas_raw,vals)),
         hovertemplate="<b>%{customdata[0]}</b><br>Total: %{customdata[1]:,}<extra></extra>",
         cliponaxis=False,
@@ -561,13 +724,13 @@ def hacer_barras(etiquetas_raw, vals, colores):
     fig.update_xaxes(range=[0, mv*1.28])
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter,sans-serif", color="#334155", size=10),
+        font=dict(family="Inter,sans-serif", color="#94a3b8", size=10),
         height=300, margin=dict(l=8,r=50,t=8,b=8), showlegend=False,
-        xaxis=dict(showgrid=True,gridcolor="#f1f5f9",zeroline=False,
-                   tickfont=dict(color="#64748b",size=9),linecolor="#e2e8f0"),
+        xaxis=dict(showgrid=True,gridcolor="rgba(42,52,68,0.8)",zeroline=False,
+                   tickfont=dict(color="#64748b",size=9),linecolor="#2a3444"),
         yaxis=dict(showgrid=False,zeroline=False,
-                   tickfont=dict(color="#334155",size=10),
-                   linecolor="#e2e8f0",automargin=True)
+                   tickfont=dict(color="#94a3b8",size=10),
+                   linecolor="#2a3444",automargin=True)
     )
     return fig.to_html(full_html=False, include_plotlyjs=False,
                        config={"responsive":True,"displayModeBar":False})
@@ -582,7 +745,7 @@ def _kpi(label, value, svg_path):
         '<div class="kpi-card">'
         '<div class="kpi-header">'
         f'<div class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" '
-        f'stroke="#1C398E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+        f'stroke="#60a5fa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
         f'{svg_path}</svg></div>'
         '<div class="kpi-dot"></div></div>'
         f'<div class="kpi-value">{value}</div>'
@@ -859,11 +1022,11 @@ def tablero_his():
                 d_s = datetime.date.fromisoformat(p_desde).strftime("%d/%m/%Y")
                 h_s = datetime.date.fromisoformat(p_hasta).strftime("%d/%m/%Y")
                 cal_extra = (
-                    '<div style="background:#e8eef8;border:1.5px solid #c5d3ea;border-radius:10px;'
-                    'padding:11px 18px;font-size:13px;color:#334155;display:flex;align-items:center;gap:10px;">'
+                    '<div style="background:rgba(59,130,246,0.08);border:1.5px solid rgba(59,130,246,0.2);border-radius:10px;'
+                    'padding:11px 18px;font-size:13px;color:#cbd5e1;display:flex;align-items:center;gap:10px;">'
                     f'<span style="font-size:18px;">🗓️</span>'
-                    f'<span>Filtrando del <b style="color:#1C398E;">{d_s}</b>'
-                    f' al <b style="color:#1C398E;">{h_s}</b></span></div>'
+                    f'<span>Filtrando del <b style="color:#60a5fa;">{d_s}</b>'
+                    f' al <b style="color:#60a5fa;">{h_s}</b></span></div>'
                 )
             except: cal_extra=""
         else: cal_extra=""
@@ -890,10 +1053,10 @@ def tablero_his():
 
     badge_personal = ""
     if sel_ap:
-        badge_personal = (f'<div style="display:inline-flex;align-items:center;gap:10px;background:#e8eef8;'
-                          f'border:1px solid #c5d3ea;border-radius:20px;padding:6px 16px;margin-bottom:10px;'
-                          f'font-family:Inter,sans-serif;font-size:13px;color:#334155;">'
-                          f'👤 Mostrando pacientes de: <b style="color:#1C398E;">{sel_label}</b></div>')
+        badge_personal = (f'<div style="display:inline-flex;align-items:center;gap:10px;background:rgba(59,130,246,0.1);'
+                          f'border:1px solid rgba(59,130,246,0.25);border-radius:20px;padding:6px 16px;margin-bottom:10px;'
+                          f'font-family:Inter,sans-serif;font-size:13px;color:#cbd5e1;">'
+                          f'👤 Mostrando pacientes de: <b style="color:#60a5fa;">{sel_label}</b></div>')
 
     qs = urlencode([("mes",m) for m in p_mes]+[("ipress",i) for i in p_ipress]+
                    [("item",i) for i in p_item]+[("edad",e) for e in p_edad]+
@@ -991,7 +1154,7 @@ def tablero_his():
         f'<form method="GET" action="/tablero-his#tablas" style="margin-bottom:14px;">{hidden}'
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:end;margin-bottom:12px;">'
         f'<div><div class="filter-label">Filtrar por personal</div>'
-        f'<select name="personal" onchange="this.form.submit()" style="width:100%;border:1.5px solid #c5d3ea;border-radius:8px;padding:9px 10px;font-family:inherit;font-size:13px;color:#334155;background:#fff;outline:none;">'
+        f'<select name="personal" onchange="this.form.submit()" style="width:100%;border:1.5px solid #2a3444;border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;color:#e2e8f0;background:#1c2330;outline:none;">'
         + _sel_personal_opts
         + '</select></div>'
         '<div><div class="filter-label">Buscar por DNI</div>'
@@ -999,7 +1162,7 @@ def tablero_his():
         f'<input type="text" name="dni" placeholder="Ej: 12345678" value="{p_dni}" maxlength="8"'
         ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" style="flex:1;">'
         '<button type="submit" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0;">Buscar</button>'
-        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#94a3b8;text-decoration:none;border:1.5px solid #e2e8f0;border-radius:8px;flex-shrink:0;">×</a>' if sel_ap or p_dni else '')
+        + (f'<a href="/tablero-his?{qs}" style="display:flex;align-items:center;padding:0 12px;font-size:13px;color:#64748b;text-decoration:none;border:1.5px solid #2a3444;border-radius:10px;flex-shrink:0;">×</a>' if sel_ap or p_dni else '')
         + '</div></div></div></form>'
         f'{badge_personal}'
         '<div class="tables-grid">'
