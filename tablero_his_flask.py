@@ -1118,7 +1118,15 @@ def tablero_his():
         f'<input type="hidden" name="dni" value="{p_dni}">'
         '<div style="display:flex;align-items:center;gap:16px;margin-top:14px;">'
         '<button type="submit" class="btn">Aplicar filtros</button>'
-        '<a href="/tablero-his" style="font-size:12px;color:#94a3b8;text-decoration:none;">\u2715 Limpiar todo</a>'
+        '<a href="/tablero-his" style="display:inline-flex;align-items:center;gap:7px;'
+        'font-size:12px;font-weight:600;color:#94a3b8;text-decoration:none;'
+        'border:1.5px solid #2a3444;border-radius:10px;padding:10px 18px;'
+        'background:#1c2330;letter-spacing:0.04em;'
+        'transition:all 0.18s;" '
+        'onmouseover="this.style.color=\'#ef4444\';this.style.borderColor=\'#ef4444\';this.style.background=\'rgba(239,68,68,0.08)\'" '
+        'onmouseout="this.style.color=\'#94a3b8\';this.style.borderColor=\'#2a3444\';this.style.background=\'#1c2330\'">'
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+        'Limpiar todo</a>'
         '</div></form></div>'
 
         # KPIs
