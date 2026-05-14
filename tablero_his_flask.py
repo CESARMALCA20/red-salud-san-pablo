@@ -291,7 +291,7 @@ function initDropdowns() {
           var sel = document.querySelector('#formFiltros select[name="' + name + '"]');
           if (sel) {
             Array.from(sel.selectedOptions).forEach(function(o) {
-              params.append(name, o.value);
+              if (o.value !== '') params.append(name, o.value);
             });
           }
         });
@@ -426,6 +426,21 @@ def build_dropdown(name, lista, sel, placeholder="Todos"):
         f'</div>'
         f'<select name="{name}" multiple class="hidden-select">{opts_html}</select>'
         f'</div>'
+    )
+
+def build_select_simple(name, lista, sel, placeholder="Todas"):
+    """Select simple de un solo valor (sin checkbox, sin dropdown personalizado)."""
+    sel_str = sel[0] if sel else ""
+    opts = f'<option value="">{placeholder}</option>'
+    for o in lista:
+        s = str(o)
+        esc = s.replace('&','&amp;').replace('"','&quot;').replace('<','&lt;')
+        selected = ' selected' if s == sel_str else ''
+        opts += f'<option value="{esc}"{selected}>{esc}</option>'
+    return (
+        f'<select name="{name}" style="width:100%;border:1.5px solid #c5d3ea;border-radius:8px;'
+        f'padding:9px 10px;font-family:inherit;font-size:13px;color:#334155;'
+        f'background:#fff;outline:none;">{opts}</select>'
     )
 
 def tabla_html(df_pd, num_cols=None, fecha_cols=None):
@@ -580,7 +595,7 @@ def tablero_his():
     MAX_MESES = 2
     if len(p_mes) > MAX_MESES:
         p_mes = p_mes[:MAX_MESES]
-    p_ipress   = request.args.getlist("ipress")
+    p_ipress   = [request.args.get("ipress","")] if request.args.get("ipress","") else []
     p_item     = request.args.getlist("item")
     p_edad     = request.args.getlist("edad")
     p_desde    = request.args.get("desde","")
@@ -915,7 +930,7 @@ def tablero_his():
         '<div class="card"><form method="GET" action="/tablero-his" id="formFiltros">'
         '<div class="filters-grid">'
         '<div><div class="filter-label">Mes</div>' + build_dropdown("mes", meses_noms, p_mes, "Todos los meses") + '</div>'
-        '<div><div class="filter-label">IPRESS</div>' + build_dropdown("ipress", ipress_opts, p_ipress, "Todas") + '</div>'
+        '<div><div class="filter-label">IPRESS</div>' + build_select_simple("ipress", ipress_opts, p_ipress, "Todas") + '</div>'
         '<div><div class="filter-label">C\u00f3digo \u00cdtem</div>' + build_dropdown("item", item_opts, p_item, "Todos") + '</div>'
         '<div><div class="filter-label">Edad Paciente</div>' + build_dropdown("edad", edad_opts, p_edad, "Todas") + '</div>'
         '</div>'
