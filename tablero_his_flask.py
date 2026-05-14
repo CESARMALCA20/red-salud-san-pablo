@@ -63,45 +63,124 @@ def _cargar_opciones():
 import threading
 threading.Thread(target=_cargar_opciones, daemon=True).start()
 
-def _cargar_datos(p_ipress=None, p_item=None, p_edad=None,
-                  p_mes=None, p_desde=None, p_hasta=None):
-    """Carga solo los datos necesarios desde Supabase según los filtros activos."""
-    where = []
-    params = {}
-
+def _build_where(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta):
+    """Construye cláusula WHERE y params para los filtros activos."""
+    where, params = [], {}
     if p_ipress:
         where.append('"Nombre_Establecimiento" = :ipress')
         params["ipress"] = p_ipress[0]
     if p_item:
-        placeholders = ",".join([f":item{i}" for i in range(len(p_item))])
-        where.append(f'"Codigo_Item" IN ({placeholders})')
-        for i, v in enumerate(p_item): params[f"item{i}"] = v
+        phs = ",".join([f":item{i}" for i in range(len(p_item))])
+        where.append(f'"Codigo_Item" IN ({phs})')
+        for i,v in enumerate(p_item): params[f"item{i}"] = v
     if p_edad:
-        placeholders = ",".join([f":edad{i}" for i in range(len(p_edad))])
-        where.append(f'CAST("Edad_Reg" AS TEXT) IN ({placeholders})')
-        for i, v in enumerate(p_edad): params[f"edad{i}"] = v
+        phs = ",".join([f":edad{i}" for i in range(len(p_edad))])
+        where.append(f'CAST("Edad_Reg" AS TEXT) IN ({phs})')
+        for i,v in enumerate(p_edad): params[f"edad{i}"] = v
     if p_mes:
-        try:
-            nums = [str(MESES_INV[m]) for m in p_mes if m in MESES_INV]
-            if nums:
-                placeholders = ",".join([f":mes{i}" for i in range(len(nums))])
-                where.append(f'CAST("Mes" AS TEXT) IN ({placeholders})')
-                for i, v in enumerate(nums): params[f"mes{i}"] = v
-        except: pass
+        nums = [str(MESES_INV[m]) for m in p_mes if m in MESES_INV]
+        if nums:
+            phs = ",".join([f":mes{i}" for i in range(len(nums))])
+            where.append(f'CAST("Mes" AS INTEGER) IN ({phs})')
+            for i,v in enumerate(nums): params[f"mes{i}"] = int(v)
     if p_desde:
         where.append('"Fecha_Atencion" >= :desde')
         params["desde"] = p_desde
     if p_hasta:
         where.append('"Fecha_Atencion" <= :hasta')
         params["hasta"] = p_hasta
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    return clause, params
 
-    sql = 'SELECT * FROM atenciones'
-    if where:
-        sql += ' WHERE ' + ' AND '.join(where)
+def _consultar(sql, params=None):
+    from sqlalchemy import text
+    with _engine.connect() as con:
+        result = con.execute(text(sql), params or {})
+        return result.fetchall()
 
+def _cargar_datos(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta):
+    """Devuelve solo las filas filtradas — para la tabla de personal."""
+    where, params = _build_where(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta)
+    sql = f'SELECT * FROM atenciones {where} LIMIT 5000'
     from sqlalchemy import text
     df_pd = pd.read_sql(text(sql), _engine, params=params)
     return pl.from_pandas(df_pd)
+
+def _cargar_kpis(where, params):
+    """KPIs calculados directamente en SQL."""
+    sql = f"""
+        SELECT
+            COUNT(*) AS total_atenciones,
+            COUNT(DISTINCT CASE
+                WHEN "Numero_Documento_Paciente" ~ '^[0-9]+$'
+                THEN "Numero_Documento_Paciente" END) AS u_pac,
+            COUNT(DISTINCT CASE
+                WHEN "Numero_Documento_Paciente" ~ '^[0-9]+$'
+                AND UPPER(CAST("Id_Condicion_Servicio" AS TEXT)) = 'N'
+                THEN "Numero_Documento_Paciente" END) AS n_pac,
+            COUNT(DISTINCT CASE
+                WHEN "Numero_Documento_Paciente" ~ '^[0-9]+$'
+                AND UPPER(CAST("Id_Condicion_Servicio" AS TEXT)) = 'C'
+                THEN "Numero_Documento_Paciente" END) AS cont_pac
+        FROM atenciones {where}
+    """
+    rows = _consultar(sql, params)
+    if rows:
+        r = rows[0]
+        total = r[0] or 0
+        u = r[1] or 0
+        n = r[2] or 0
+        c = r[3] or 0
+        return total, u, n, c, (n/u if u>0 else 0.0)
+    return 0, 0, 0, 0, 0.0
+
+def _cargar_grafico(col, where, params, limit=6):
+    """Top N para gráficos — calculado en SQL."""
+    sql = f"""
+        SELECT CAST("{col}" AS TEXT) as lbl, COUNT(*) as n
+        FROM atenciones {where}
+        WHERE "{col}" IS NOT NULL
+        GROUP BY "{col}"
+        ORDER BY n DESC
+        LIMIT {limit}
+    """
+    rows = _consultar(sql, params)
+    return [(r[0], r[1]) for r in rows if r[0] and str(r[0]).strip() not in ("None","")]
+
+def _cargar_personal(where, params):
+    """Lista de personal con total de atenciones — calculado en SQL."""
+    sql = f"""
+        SELECT
+            CAST("Apellido_Paterno_Personal" AS TEXT) as ap,
+            CAST("Nombres_Personal" AS TEXT) as nom,
+            COUNT(*) as total
+        FROM atenciones {where}
+        WHERE "Apellido_Paterno_Personal" IS NOT NULL
+        GROUP BY "Apellido_Paterno_Personal", "Nombres_Personal"
+        ORDER BY total DESC
+    """
+    return _consultar(sql, params)
+
+def _cargar_pacientes(where, params, sel_ap, sel_nom, p_dni):
+    """Pacientes de un personal específico o búsqueda por DNI."""
+    extra = []
+    p2 = dict(params)
+    if sel_ap:
+        extra.append('CAST("Apellido_Paterno_Personal" AS TEXT) = :sel_ap')
+        p2["sel_ap"] = sel_ap
+    if sel_nom:
+        extra.append('CAST("Nombres_Personal" AS TEXT) = :sel_nom')
+        p2["sel_nom"] = sel_nom
+    if p_dni:
+        extra.append('CAST("Numero_Documento_Paciente" AS TEXT) = :dni')
+        p2["dni"] = p_dni
+    if not extra:
+        return None, p2
+    w2 = where + (" AND " if where else "WHERE ") + " AND ".join(extra)
+    sql = f'SELECT * FROM atenciones {w2} LIMIT 500'
+    from sqlalchemy import text
+    df_pd = pd.read_sql(text(sql), _engine, params=p2)
+    return pl.from_pandas(df_pd), p2
 
 MESES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
          7:"Julio",8:"Agosto",9:"Setiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
@@ -854,7 +933,7 @@ def tablero_his():
     p_dni      = "".join(c for c in request.args.get("dni","") if c.isdigit())
 
     try:
-        # Opciones desde caché (no va a Supabase cada vez)
+        # Opciones desde caché
         opts = _cargar_opciones()
         ipress_opts = opts.get("ipress", [])
         item_opts   = opts.get("items",  [])
@@ -862,25 +941,31 @@ def tablero_his():
         meses_nums  = opts.get("meses",  [])
         meses_noms  = [MESES.get(int(m), str(m)) for m in meses_nums]
 
-        # Datos filtrados (única consulta a Supabase)
-        df_raw = _cargar_datos(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta)
+        # WHERE clause compartida para todas las consultas
+        where, params = _build_where(p_ipress, p_item, p_edad, p_mes, p_desde, p_hasta)
+
+        # KPIs directo en SQL
+        total_atenciones, u_pac, n_pac, cont_pac, pct_cap = _cargar_kpis(where, params)
+
+        # Gráficos directo en SQL
+        rows_c1 = _cargar_grafico("Descripcion_Item",       where, params)
+        rows_c2 = _cargar_grafico("Tipo_Diagnostico",       where, params)
+        rows_c3 = _cargar_grafico("Nombre_Establecimiento", where, params)
+        rows_c4 = _cargar_grafico("Descripcion_Financiador",where, params)
+
+        # Personal directo en SQL
+        personal_sql = _cargar_personal(where, params)
+
     except Exception as e:
-        return f"<h3 style='padding:40px;font-family:monospace'>Error conectando a Supabase: {e}</h3>", 500
+        return f"<h3 style='padding:40px;font-family:monospace'>Error Supabase: {e}</h3>", 500
 
     fecha_excel = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    COL_FECHA = next(
-        (c for c in df_raw.columns if "fecha" in c.lower() and "regla" not in c.lower()), None
-    )
+    COL_FECHA  = "Fecha_Atencion"
     anio_datos = 2026
-    try:
-        if "Anio" in df_raw.columns:
-            anios = sorted([int(a) for a in df_raw["Anio"].unique().drop_nulls().to_list()])
-            if anios: anio_datos = anios[0]
-    except: pass
 
-    # ── Filtros en memoria (df_raw ya viene pre-filtrado desde SQL) ──
-    df_f = df_raw.clone()
+    # ── Filtros en memoria (df_f vacío — ya no se usa para cálculos) ──
+    df_f = pl.DataFrame()
 
     # Calendario
     calendario_activo = len(p_mes) == 1
@@ -888,114 +973,50 @@ def tablero_his():
 
     if calendario_activo:
         primer_mes_n = MESES_INV.get(p_mes[0], 1)
-        if COL_FECHA:
-            try:
-                _dm = df_raw.filter(
-                    pl.col("Mes").cast(pl.Utf8).str.strip_chars().is_in(
-                        [str(primer_mes_n),
-                         f"0{primer_mes_n}" if primer_mes_n<10 else str(primer_mes_n),
-                         f"{primer_mes_n}.0"]
-                    )
-                ).with_columns(pl.col(COL_FECHA).cast(pl.Utf8).str.slice(0,10).alias("_fs"))
-                for _fmt in ["%Y-%m-%d","%d/%m/%Y","%d-%m-%Y"]:
-                    try:
-                        _p = _dm.with_columns(
-                            pl.col("_fs").str.strptime(pl.Date,_fmt,strict=False).alias("_fd")
-                        ).filter(pl.col("_fd").is_not_null())
-                        if _p.height>0:
-                            min_fecha_str = str(_p["_fd"].min())
-                            max_fecha_str = str(_p["_fd"].max())
-                            break
-                    except: continue
-            except: pass
+        try:
+            from sqlalchemy import text
+            with _engine.connect() as con:
+                r = con.execute(text(
+                    'SELECT MIN("Fecha_Atencion"), MAX("Fecha_Atencion") '
+                    'FROM atenciones WHERE "Mes" = :mes'
+                ), {"mes": primer_mes_n}).fetchone()
+                if r and r[0]:
+                    min_fecha_str = str(r[0])[:10]
+                    max_fecha_str = str(r[1])[:10]
+        except: pass
         if not min_fecha_str:
             min_fecha_str = f"{anio_datos}-{primer_mes_n:02d}-01"
             max_fecha_str = f"{anio_datos}-{primer_mes_n:02d}-{_cal.monthrange(anio_datos,primer_mes_n)[1]:02d}"
         if not p_desde: p_desde = min_fecha_str
         if not p_hasta: p_hasta = max_fecha_str
 
-        if COL_FECHA and (p_desde or p_hasta):
-            try:
-                fd = datetime.date.fromisoformat(p_desde) if p_desde else None
-                fh = datetime.date.fromisoformat(p_hasta) if p_hasta else None
-            except: fd = fh = None
-            if fd or fh:
-                df_tmp = df_f.with_columns(pl.col(COL_FECHA).cast(pl.Utf8).str.slice(0,10).alias("_fs"))
-                df_cf = None
-                for fmt in ["%Y-%m-%d","%d/%m/%Y","%d-%m-%Y"]:
-                    try:
-                        _t = df_tmp.with_columns(pl.col("_fs").str.strptime(pl.Date,fmt,strict=False).alias("_fd"))
-                        if _t.filter(pl.col("_fd").is_not_null()).height>0: df_cf=_t; break
-                    except: continue
-                if df_cf is not None:
-                    if fd: df_cf = df_cf.filter(pl.col("_fd") >= pl.lit(fd))
-                    if fh: df_cf = df_cf.filter(pl.col("_fd") <= pl.lit(fh))
-                    df_f = df_cf.drop(["_fs","_fd"])
-                else:
-                    df_f = df_tmp.drop("_fs")
+    # ── KPIs (ya calculados en SQL) ──
+    # total_atenciones, u_pac, n_pac, cont_pac, pct_cap ya están disponibles
 
-    # ── KPIs ──
-    total_atenciones = df_f.height
-    u_pac = n_pac = cont_pac = 0; pct_cap = 0.0
-    if "Numero_Documento_Paciente" in df_f.columns and total_atenciones>0:
-        dc = (df_f.filter(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
-                          .str.strip_chars().str.contains(r"^[0-9]+$"))
-              .with_columns(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
-                            .str.strip_chars().alias("_dni")))
-        u_pac    = dc["_dni"].n_unique()
-        n_pac    = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="N")["_dni"].n_unique()
-        cont_pac = dc.filter(pl.col("Id_Condicion_Servicio").cast(pl.Utf8).str.to_uppercase()=="C")["_dni"].n_unique()
-        pct_cap  = (n_pac/u_pac) if u_pac>0 else 0.0
-
-    # ── Gráficos — se generan como strings HTML completos ──
+    # ── Gráficos ──
     html_c1=html_c2=html_c3=html_c4=""
 
-    # Usar Polars puro para gráficos — sin pandas, mucho menos memoria
-    if "Descripcion_Item" in df_f.columns and total_atenciones>0:
-        rows = (df_f.group_by("Descripcion_Item").agg(pl.len().alias("N"))
-                .sort("N",descending=True).head(6).rows(named=True))
-        if rows:
-            html_c1 = hacer_radar([r["Descripcion_Item"] for r in rows],
-                                   [r["N"] for r in rows])
+    if rows_c1:
+        html_c1 = hacer_radar([r[0] for r in rows_c1], [r[1] for r in rows_c1])
 
-    if "Tipo_Diagnostico" in df_f.columns and total_atenciones>0:
-        rows = (df_f.group_by("Tipo_Diagnostico").agg(pl.len().alias("N"))
-                .sort("N",descending=True).head(6).rows(named=True))
-        rows = [r for r in rows if r["Tipo_Diagnostico"] is not None]
-        if rows:
-            etiq = [MAPA_DIAG.get(str(r["Tipo_Diagnostico"]).strip().upper(),
-                                   str(r["Tipo_Diagnostico"]).strip()) for r in rows]
-            html_c2 = hacer_barras(etiq, [r["N"] for r in rows], DAZUL)
+    if rows_c2:
+        etiq = [MAPA_DIAG.get(str(r[0]).strip().upper(), str(r[0]).strip()) for r in rows_c2]
+        html_c2 = hacer_barras(etiq, [r[1] for r in rows_c2], DAZUL)
 
-    if "Nombre_Establecimiento" in df_f.columns and total_atenciones>0:
-        rows = (df_f.group_by("Nombre_Establecimiento").agg(pl.len().alias("N"))
-                .sort("N",descending=True).head(6).rows(named=True))
-        if rows:
-            html_c3 = hacer_barras([r["Nombre_Establecimiento"] for r in rows],
-                                    [r["N"] for r in rows], DAZUL)
+    if rows_c3:
+        html_c3 = hacer_barras([r[0] for r in rows_c3], [r[1] for r in rows_c3], DAZUL)
 
-    if "Descripcion_Financiador" in df_f.columns and total_atenciones>0:
-        rows = (df_f.filter(pl.col("Descripcion_Financiador").is_not_null())
-                .group_by("Descripcion_Financiador").agg(pl.len().alias("N"))
-                .sort("N",descending=True).head(6).rows(named=True))
-        rows = [r for r in rows if str(r["Descripcion_Financiador"]).strip() not in ("None","")]
-        if rows:
-            html_c4 = hacer_barras([r["Descripcion_Financiador"] for r in rows],
-                                    [r["N"] for r in rows], DGRIS)
+    if rows_c4:
+        html_c4 = hacer_barras([r[0] for r in rows_c4], [r[1] for r in rows_c4], DGRIS)
 
-    # ── Personal ──
-    # El valor del select es el ÍNDICE numérico ("0", "1", ...) para evitar
-    # problemas con apellidos compuestos como "DE LA CRUZ"
-    cols_p = [c for c in ["Apellido_Paterno_Personal","Nombres_Personal"] if c in df_f.columns]
+    # ── Personal (ya calculado en SQL) ──
     html_t_personal = ""
     personal_data = [("— Todos —", "", "")]
 
-    if cols_p and total_atenciones>0:
-        res_p_rows = (df_f.group_by(cols_p).agg(pl.len().alias("Total_Atenciones"))
-                      .sort("Total_Atenciones",descending=True).rows(named=True))
-        for row in res_p_rows:
-            ap  = str(row.get("Apellido_Paterno_Personal","") or "").strip()
-            nom = str(row.get("Nombres_Personal","") or "").strip()
+    if personal_sql and total_atenciones > 0:
+        for row in personal_sql:
+            ap  = str(row[0] or "").strip()
+            nom = str(row[1] or "").strip()
             personal_data.append((f"{ap} {nom}".strip(), ap, nom))
 
         # Buscar por "AP||NOM" — estable ante cambios de filtro
@@ -1010,12 +1031,13 @@ def tablero_his():
                     p_idx = i; sel_label = lbl; break
         # sel_ap ya está vacío si no se encontró match
 
-        # Construir tabla personal (pequeña — solo N personal) con pandas
+        # Tabla de personal desde datos SQL
         import pandas as pd
-        df_personal_pd = pd.DataFrame(res_p_rows)
+        df_personal_pd = pd.DataFrame([(r[0], r[1], r[2]) for r in personal_sql],
+                                       columns=["Apellido_Paterno_Personal","Nombres_Personal","Total_Atenciones"])
         if sel_ap:
-            mask = df_personal_pd.get("Apellido_Paterno_Personal","").astype(str).str.strip() == sel_ap
-            if "Nombres_Personal" in df_personal_pd.columns:
+            mask = df_personal_pd["Apellido_Paterno_Personal"].astype(str).str.strip() == sel_ap
+            if sel_nom:
                 mask = mask & (df_personal_pd["Nombres_Personal"].astype(str).str.strip() == sel_nom)
             res_p_disp = df_personal_pd[mask]
         else:
@@ -1028,36 +1050,28 @@ def tablero_his():
         p_idx = 0
         sel_label, sel_ap, sel_nom = "— Todos —", "", ""
 
-    # Opciones para el select — valor = índice numérico
     opciones_personal_sel = [(f"{ap}||{nom}" if ap else "", lbl) for lbl,ap,nom in personal_data]
 
-    # ── Pacientes ──
-    cols_pac = ["Numero_Documento_Paciente"]
-    for c in ["Nombres_Paciente","Apellido_Paterno_Paciente","Fecha_Ultima_Regla"]:
-        if c in df_f.columns: cols_pac.append(c)
-    df_para_pac = df_f.clone()
-    if sel_ap and cols_p:
-        _f = pl.lit(True)
-        if "Apellido_Paterno_Personal" in df_f.columns:
-            _f = _f & (pl.col("Apellido_Paterno_Personal").cast(pl.Utf8).str.strip_chars()==sel_ap)
-        if "Nombres_Personal" in df_f.columns and sel_nom:
-            _f = _f & (pl.col("Nombres_Personal").cast(pl.Utf8).str.strip_chars()==sel_nom)
-        df_para_pac = df_f.filter(_f)
-    df_lista_pl = (df_para_pac
-                   .filter(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
-                           .str.strip_chars().str.contains(r"^[0-9]+$"))
-                   .select(cols_pac)
-                   .unique(subset=["Numero_Documento_Paciente"],keep="first"))
-    if p_dni:
-        df_lista_pl = df_lista_pl.filter(
-            pl.col("Numero_Documento_Paciente").cast(pl.Utf8).str.contains(p_dni))
-    if "Fecha_Ultima_Regla" in df_lista_pl.columns:
-        df_lista_pl = df_lista_pl.with_columns(
-            pl.col("Fecha_Ultima_Regla").cast(pl.Utf8).fill_null("").alias("Fecha_Ultima_Regla"))
-    # Convertir solo la tabla final (pequeña) a pandas para el render HTML
-    df_lista = df_lista_pl.to_pandas()
-    n_pac_filt  = len(df_lista)
-    html_t_pac  = tabla_html(df_lista, fecha_cols=["Fecha_Ultima_Regla"])
+    # ── Pacientes desde SQL ──
+    df_pac_pl, _ = _cargar_pacientes(where, params, sel_ap, sel_nom, p_dni)
+    if df_pac_pl is not None:
+        cols_pac = ["Numero_Documento_Paciente"]
+        for c in ["Nombres_Paciente","Apellido_Paterno_Paciente","Fecha_Ultima_Regla"]:
+            if c in df_pac_pl.columns: cols_pac.append(c)
+        df_lista_pl = (df_pac_pl
+                       .filter(pl.col("Numero_Documento_Paciente").cast(pl.Utf8)
+                               .str.strip_chars().str.contains(r"^[0-9]+$"))
+                       .select(cols_pac)
+                       .unique(subset=["Numero_Documento_Paciente"], keep="first"))
+        if "Fecha_Ultima_Regla" in df_lista_pl.columns:
+            df_lista_pl = df_lista_pl.with_columns(
+                pl.col("Fecha_Ultima_Regla").cast(pl.Utf8).fill_null("").alias("Fecha_Ultima_Regla"))
+        df_lista = df_lista_pl.to_pandas()
+    else:
+        import pandas as pd
+        df_lista = pd.DataFrame()
+    n_pac_filt = len(df_lista)
+    html_t_pac = tabla_html(df_lista, fecha_cols=["Fecha_Ultima_Regla"])
 
     # ── Construir piezas HTML (sin f-string para las que contienen Plotly) ──
     logo_b64  = _logo_b64()
